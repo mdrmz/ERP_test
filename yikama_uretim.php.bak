@@ -1,0 +1,533 @@
+<?php
+session_start();
+include("baglan.php");
+
+// Güvenlik kontrolü
+if (!isset($_SESSION["oturum"])) {
+    header("Location: login.php");
+    exit;
+}
+
+$mesaj = "";
+$hata = "";
+
+// --- KAYIT İŞLEMİ ---
+if (isset($_POST["kaydet"])) {
+    $parti_no = mysqli_real_escape_string($baglanti, trim($_POST["parti_no"]));
+    $hammadde_parti_no = mysqli_real_escape_string($baglanti, $_POST["hammadde_parti_no"]);
+
+    // Validation: Parti no duplicate kontrolü
+    $parti_check = $baglanti->query("SELECT id FROM yikama_kayitlari WHERE parti_no = '$parti_no'");
+    if ($parti_check && $parti_check->num_rows > 0) {
+        $hata = "❌ Bu yıkama parti numarası zaten kullanılmış: $parti_no";
+    }
+    // Validation: Hammadde parti kontrolü
+    elseif (!empty($hammadde_parti_no)) {
+        $hammadde_check = $baglanti->query("SELECT id FROM hammadde_girisleri WHERE parti_no = '$hammadde_parti_no'");
+        if (!$hammadde_check || $hammadde_check->num_rows == 0) {
+            $hata = "❌ Bu hammadde parti numarası sistemde bulunamadı: $hammadde_parti_no";
+        }
+    }
+
+    if (empty($hata)) {
+        // 1. YIKAMA KAYDI
+        $yikama_tarihi = $_POST["yikama_tarihi"];
+        $urun_adi = $_POST["urun_adi"];
+        $y_hektolitre = $_POST["y_hektolitre"];
+        $y_nem = $_POST["y_nem"];
+        $y_protein = $_POST["y_protein"];
+        $y_sertlik = $_POST["y_sertlik"];
+        $y_nisasta = $_POST["y_nisasta"];
+        $tam_bugday_kg = $_POST["tam_bugday_kg"];
+        $tohum_miktari_kg = $_POST["tohum_miktari_kg"];
+        $su_sicakligi = $_POST["su_sicakligi"];
+
+        $sql_yikama = "INSERT INTO yikama_kayitlari 
+            (parti_no, hammadde_parti_no, yikama_tarihi, urun_adi, hektolitre, nem, protein, sertlik, nisasta, tam_bugday_kg, tohum_miktari_kg, su_sicakligi, personel) 
+            VALUES ('$parti_no', '$hammadde_parti_no', '$yikama_tarihi', '$urun_adi', '$y_hektolitre', '$y_nem', '$y_protein', '$y_sertlik', '$y_nisasta', '$tam_bugday_kg', '$tohum_miktari_kg', '$su_sicakligi', '{$_SESSION["kadi"]}')";
+        ;
+
+        if ($baglanti->query($sql_yikama)) {
+            $yikama_id = $baglanti->insert_id;
+
+            // 2. AKTARMA KAYDI
+            $aktarma_tarihi = $_POST["aktarma_tarihi"];
+            $a_nem = $_POST["a_nem"];
+            $a_su_litre = $_POST["a_su_litre"];
+
+            $sql_aktarma = "INSERT INTO aktarma_kayitlari 
+            (parti_no, yikama_id, aktarma_tarihi, nem, verilen_su_litre, personel) 
+            VALUES ('$parti_no', $yikama_id, '$aktarma_tarihi', '$a_nem', '$a_su_litre', '{$_SESSION["kadi"]}')";
+
+            if ($baglanti->query($sql_aktarma)) {
+                $aktarma_id = $baglanti->insert_id;
+
+                // 3. B1 DEĞİRMEN KAYDI
+                $b1_tarihi = $_POST["b1_tarihi"];
+                $b1_hektolitre = $_POST["b1_hektolitre"];
+                $b1_nem = $_POST["b1_nem"];
+                $b1_protein = $_POST["b1_protein"];
+                $b1_sertlik = $_POST["b1_sertlik"];
+                $b1_nisasta = $_POST["b1_nisasta"];
+                $b1_su_litre = $_POST["b1_su_litre"];
+
+                $sql_b1 = "INSERT INTO b1_degirmen_kayitlari 
+                (parti_no, aktarma_id, uretim_tarihi, hektolitre, nem, protein, sertlik, nisasta, verilen_su_litre, personel) 
+                VALUES ('$parti_no', $aktarma_id, '$b1_tarihi', '$b1_hektolitre', '$b1_nem', '$b1_protein', '$b1_sertlik', '$b1_nisasta', '$b1_su_litre', '{$_SESSION["kadi"]}')";
+
+                if ($baglanti->query($sql_b1)) {
+                    $b1_id = $baglanti->insert_id;
+
+                    // 4. UN ÇIKIŞ KAYDI
+                    $un_protein = $_POST["un_protein"] ?? null;
+
+                    if ($un_protein) {
+                        $sql_un = "INSERT INTO un_cikis_kayitlari 
+                        (parti_no, b1_id, protein, personel) 
+                        VALUES ('$parti_no', $b1_id, '$un_protein', '{$_SESSION["kadi"]}')";
+                        $baglanti->query($sql_un);
+                    }
+
+                    $mesaj = "✅ Tüm üretim kayıtları başarıyla kaydedildi! Parti No: <strong>$parti_no</strong>";
+                } else {
+                    $hata = "B1 kaydı hatası: " . $baglanti->error;
+                }
+            } else {
+                $hata = "Aktarma kaydı hatası: " . $baglanti->error;
+            }
+        } else {
+            $hata = "Yıkama kaydı hatası: " . $baglanti->error;
+        }
+    }
+}
+
+// Otomatik parti no oluştur
+$yeni_parti = "YK-" . date("dmy-Hi");
+
+// Hammadde partilerini getir (lab analizi yapılmış olanları)
+$hammadde_partileri = $baglanti->query("
+    SELECT DISTINCT hg.parti_no, hg.tarih, hg.tedarikci, h.ad as hammadde_adi
+    FROM hammadde_girisleri hg
+    LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id
+    WHERE hg.parti_no IS NOT NULL AND hg.parti_no != ''
+    ORDER BY hg.tarih DESC
+    LIMIT 50
+");
+
+// Son kayıtları getir
+$son_kayitlar = $baglanti->query("
+    SELECT y.*, a.aktarma_tarihi, a.nem as a_nem, a.verilen_su_litre,
+           b.uretim_tarihi as b1_tarihi, b.protein as b1_protein,
+           u.protein as un_protein
+    FROM yikama_kayitlari y
+    LEFT JOIN aktarma_kayitlari a ON y.id = a.yikama_id
+    LEFT JOIN b1_degirmen_kayitlari b ON a.id = b.aktarma_id
+    LEFT JOIN un_cikis_kayitlari u ON b.id = u.b1_id
+    ORDER BY y.id DESC LIMIT 10
+");
+?>
+
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yıkama & TAV Üretim - Özbal Un</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.min.css" rel="stylesheet">
+    <style>
+        .section-card {
+            background: linear-gradient(135deg, #1c2331 0%, #2c3e50 100%);
+            color: #fff;
+            border-radius: 15px;
+            padding: 20px;
+            height: 100%;
+        }
+
+        .section-card.yikama {
+            border-top: 4px solid #e74c3c;
+        }
+
+        .section-card.aktarma {
+            border-top: 4px solid #f39c12;
+        }
+
+        .section-card.b1 {
+            border-top: 4px solid #3498db;
+        }
+
+        .section-card.un {
+            border-top: 4px solid #27ae60;
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title i {
+            font-size: 1.5rem;
+        }
+
+        .form-control-dark {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+
+        .form-control-dark:focus {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            border-color: #f39c12;
+            box-shadow: 0 0 0 0.2rem rgba(243, 156, 18, 0.25);
+        }
+
+        .form-control-dark::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .form-label {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 3px;
+        }
+
+        .parti-header {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+
+        .flow-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #f39c12;
+            font-size: 2rem;
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+
+    <?php include("navbar.php"); ?>
+
+    <div class="container-fluid py-4">
+
+        <div class="mb-4">
+            <h2 class="fw-bold"><i class="fas fa-water text-primary"></i> Yıkama & TAV Üretim</h2>
+            <p class="text-muted">Buğday yıkama, aktarma, B1 değirmen ve un çıkış kayıtları</p>
+        </div>
+
+
+
+        <form method="post">
+            <!-- PARTİ HEADER -->
+            <div class="parti-header text-white">
+                <div class="row align-items-center">
+                    <div class="col-md-5 mb-3">
+                        <label class="mb-2"><i class="fas fa-link me-2"></i> Hammadde Parti No (Kaynak)</label>
+                        <select name="hammadde_parti_no" class="form-select form-select-lg" required>
+                            <option value="">-- Hangi hammadde partis inden yıkanıyor? --</option>
+                            <?php
+                            if ($hammadde_partileri && $hammadde_partileri->num_rows > 0) {
+                                while ($hp = $hammadde_partileri->fetch_assoc()) {
+                                    ?>
+                                    <option value="<?php echo htmlspecialchars($hp["parti_no"]); ?>">
+                                        <?php echo htmlspecialchars($hp["parti_no"]) . " - " . htmlspecialchars($hp["hammadde_adi"] ?? "Bilinmiyor") . " (" . date("d.m.Y", strtotime($hp["tarih"])) . ")"; ?>
+                                    </option>
+                                    <?php
+                                }
+                            } else {
+                                echo "<option value='' disabled>Hammadde girişi bulunamadı</option>";
+                            }
+                            ?>
+                        </select>
+                        <small class="text-white-50 mt-1 d-block">Bu yıkama hangi hammadde partisi için?</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="mb-2"><i class="fas fa-barcode me-2"></i> Yıkama Parti No</label>
+                        <input type="text" name="parti_no" class="form-control form-control-lg fw-bold text-center"
+                            placeholder="YK-130226-001" required>
+                        <small class="text-white-50 mt-1 d-block">Manuel girin (benzersiz)</small>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <button type="submit" name="kaydet" class="btn btn-light btn-lg fw-bold px-4">
+                            <i class="fas fa-save me-2"></i> KAYDET
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4 BÖLÜM -->
+            <div class="row g-3">
+
+                <!-- YIKAMA -->
+                <div class="col-lg-3 col-md-6">
+                    <div class="section-card yikama">
+                        <div class="section-title">
+                            <i class="fas fa-shower text-danger"></i> YIKAMA
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label">Tarih</label>
+                            <input type="datetime-local" name="yikama_tarihi"
+                                class="form-control form-control-sm form-control-dark"
+                                value="<?php echo date('Y-m-d\TH:i'); ?>" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Ürün Adı</label>
+                            <input type="text" name="urun_adi" class="form-control form-control-sm form-control-dark"
+                                placeholder="Buğday cinsi">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Hektolitre</label>
+                                <input type="number" step="0.01" name="y_hektolitre"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Nem %</label>
+                                <input type="number" step="0.01" name="y_nem"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Protein %</label>
+                                <input type="number" step="0.01" name="y_protein"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Sertlik</label>
+                                <input type="number" step="0.01" name="y_sertlik"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Nişasta</label>
+                                <input type="number" step="0.01" name="y_nisasta"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Tam Buğday (kg)</label>
+                                <input type="number" step="0.01" name="tam_bugday_kg"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Tohum (kg)</label>
+                                <input type="number" step="0.01" name="tohum_miktari_kg"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Su Sıcak. °C</label>
+                                <input type="number" step="0.1" name="su_sicakligi"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AKTARMA -->
+                <div class="col-lg-2 col-md-6">
+                    <div class="section-card aktarma">
+                        <div class="section-title">
+                            <i class="fas fa-exchange-alt text-warning"></i> AKTARMA
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label">Tarih</label>
+                            <input type="datetime-local" name="aktarma_tarihi"
+                                class="form-control form-control-sm form-control-dark"
+                                value="<?php echo date('Y-m-d\TH:i'); ?>">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Nem %</label>
+                            <input type="number" step="0.01" name="a_nem"
+                                class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Verilen Su (L)</label>
+                            <input type="number" step="0.01" name="a_su_litre"
+                                class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- B1 DEĞİRMEN -->
+                <div class="col-lg-3 col-md-6">
+                    <div class="section-card b1">
+                        <div class="section-title">
+                            <i class="fas fa-cogs text-info"></i> B1 DEĞİRMEN
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label">Üretim Tarihi</label>
+                            <input type="datetime-local" name="b1_tarihi"
+                                class="form-control form-control-sm form-control-dark"
+                                value="<?php echo date('Y-m-d\TH:i'); ?>">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Hektolitre</label>
+                                <input type="number" step="0.01" name="b1_hektolitre"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Nem %</label>
+                                <input type="number" step="0.01" name="b1_nem"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Protein %</label>
+                                <input type="number" step="0.01" name="b1_protein"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Sertlik</label>
+                                <input type="number" step="0.01" name="b1_sertlik"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Nişasta</label>
+                                <input type="number" step="0.01" name="b1_nisasta"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Verilen Su (L)</label>
+                                <input type="number" step="0.01" name="b1_su_litre"
+                                    class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- UN 1 ÇIKIŞ -->
+                <div class="col-lg-2 col-md-6">
+                    <div class="section-card un">
+                        <div class="section-title">
+                            <i class="fas fa-wheat-awn text-success"></i> UN 1
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label">Protein %</label>
+                            <input type="number" step="0.01" name="un_protein"
+                                class="form-control form-control-sm form-control-dark" placeholder="0.00">
+                        </div>
+                        <div class="mt-4 text-center">
+                            <small class="text-white-50">
+                                <i class="fas fa-info-circle"></i> Diğer değerler ileride eklenebilir
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ÖZET / AKIŞ -->
+                <div class="col-lg-2">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <h6 class="fw-bold mb-3">Üretim Akışı</h6>
+                            <div class="d-flex flex-column align-items-center gap-2">
+                                <span class="badge bg-danger px-3 py-2">YIKAMA</span>
+                                <i class="fas fa-arrow-down text-muted"></i>
+                                <span class="badge bg-warning px-3 py-2">AKTARMA</span>
+                                <i class="fas fa-arrow-down text-muted"></i>
+                                <span class="badge bg-info px-3 py-2">B1</span>
+                                <i class="fas fa-arrow-down text-muted"></i>
+                                <span class="badge bg-success px-3 py-2">UN 1</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </form>
+
+        <!-- SON KAYITLAR -->
+        <div class="card mt-4 border-0 shadow-sm">
+            <div class="card-header bg-white fw-bold">
+                <i class="fas fa-history me-2"></i> Son Kayıtlar
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Parti No</th>
+                            <th>Yıkama Tarihi</th>
+                            <th>Ürün</th>
+                            <th>Yıkama Protein</th>
+                            <th>B1 Protein</th>
+                            <th>UN Protein</th>
+                            <th>İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($son_kayitlar && $son_kayitlar->num_rows > 0) {
+                            while ($row = $son_kayitlar->fetch_assoc()) { ?>
+                                <tr>
+                                    <td><span class="badge bg-dark"><?php echo $row["parti_no"]; ?></span></td>
+                                    <td><?php echo date("d.m.Y H:i", strtotime($row["yikama_tarihi"])); ?></td>
+                                    <td><?php echo $row["urun_adi"] ?? '-'; ?></td>
+                                    <td><?php echo $row["protein"] ? '%' . $row["protein"] : '-'; ?></td>
+                                    <td><?php echo $row["b1_protein"] ? '%' . $row["b1_protein"] : '-'; ?></td>
+                                    <td class="fw-bold text-success">
+                                        <?php echo $row["un_protein"] ? '%' . $row["un_protein"] : '-'; ?>
+                                    </td>
+                                    <td>
+                                        <a href="izlenebilirlik.php?parti_no=<?php echo $row["parti_no"]; ?>&sorgula=1"
+                                            class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-search"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            <?php }
+                        } else { ?>
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-3">Henüz kayıt yok</td>
+                            </tr>
+                        <?php } ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.all.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            <?php if (!empty($mesaj)): ?>
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'success',
+                    title: '<?php echo addslashes(str_replace(["✅ ", "✓ "], "", strip_tags($mesaj))); ?>',
+                    showConfirmButton: false,
+                    showCloseButton: true,
+                    timer: 5000,
+                    timerProgressBar: true,
+                    didOpen: (toast) => {
+                        toast.addEventListener('mouseenter', Swal.stopTimer)
+                        toast.addEventListener('mouseleave', Swal.resumeTimer)
+                    }
+                });
+            <?php endif; ?>
+
+            <?php if (!empty($hata)): ?>
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Hata!',
+                    text: '<?php echo addslashes(str_replace(["❌ ", "✖ ", "HATA: "], "", strip_tags($hata))); ?>',
+                    confirmButtonColor: '#0f172a'
+                });
+            <?php endif; ?>
+        });
+    </script>
+</body>
+
+</html>
