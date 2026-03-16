@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Anamakine: 127.0.0.1
--- Üretim Zamanı: 13 Mar 2026, 09:02:45
+-- Üretim Zamanı: 16 Mar 2026, 11:13:53
 -- Sunucu sürümü: 10.4.32-MariaDB
 -- PHP Sürümü: 8.2.12
 
@@ -18,7 +18,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Veritabanı: `yonetim_paneli2`
+-- Veritabanı: `yonetim_paneli`
 --
 
 -- --------------------------------------------------------
@@ -1506,6 +1506,53 @@ CREATE TABLE `un_cikis_kayitlari` (
 -- --------------------------------------------------------
 
 --
+-- Tablo için tablo yapısı `uretim_b1`
+--
+
+CREATE TABLE `uretim_b1` (
+  `id` int(11) NOT NULL,
+  `tavlama_3_id` int(11) NOT NULL,
+  `baslama_tarihi` datetime NOT NULL,
+  `bitis_tarihi` datetime DEFAULT NULL,
+  `su_derecesi` decimal(5,2) DEFAULT NULL,
+  `ortam_derecesi` decimal(5,2) DEFAULT NULL,
+  `b1_tonaj` decimal(10,2) DEFAULT NULL,
+  `karisim_degerleri` varchar(255) DEFAULT NULL,
+  `olusturan` varchar(100) DEFAULT NULL,
+  `olusturma_tarihi` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_b1_detay`
+--
+
+CREATE TABLE `uretim_b1_detay` (
+  `id` int(11) NOT NULL,
+  `b1_id` int(11) NOT NULL,
+  `yas_ambar_no` varchar(50) DEFAULT NULL,
+  `hedef_nem` decimal(5,2) DEFAULT NULL,
+  `nem` decimal(5,2) DEFAULT NULL,
+  `gluten` decimal(5,2) DEFAULT NULL,
+  `g_index` int(11) DEFAULT NULL,
+  `n_sedim` int(11) DEFAULT NULL,
+  `g_sedim` int(11) DEFAULT NULL,
+  `hektolitre` decimal(5,2) DEFAULT NULL,
+  `alveo_p` decimal(5,2) DEFAULT NULL,
+  `alveo_g` decimal(5,2) DEFAULT NULL,
+  `alveo_pl` decimal(5,2) DEFAULT NULL,
+  `alveo_w` int(11) DEFAULT NULL,
+  `alveo_ie` decimal(5,2) DEFAULT NULL,
+  `fn` int(11) DEFAULT NULL,
+  `perten_protein` decimal(5,2) DEFAULT NULL,
+  `perten_sertlik` decimal(5,2) DEFAULT NULL,
+  `perten_nisasta` decimal(5,2) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Tablo için tablo yapısı `uretim_ciktilari`
 --
 
@@ -1545,6 +1592,59 @@ CREATE TABLE `uretim_hareketleri` (
 -- --------------------------------------------------------
 
 --
+-- Tablo için tablo yapısı `uretim_pacal`
+--
+
+CREATE TABLE `uretim_pacal` (
+  `id` int(11) NOT NULL,
+  `tarih` date NOT NULL,
+  `urun_adi` varchar(100) NOT NULL,
+  `parti_no` varchar(100) NOT NULL,
+  `toplam_miktar_kg` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `notlar` text DEFAULT NULL,
+  `durum` varchar(50) NOT NULL DEFAULT 'hazirlaniyor',
+  `olusturan` varchar(100) DEFAULT NULL,
+  `olusturma_tarihi` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_pacal_detay`
+--
+
+CREATE TABLE `uretim_pacal_detay` (
+  `id` int(11) NOT NULL,
+  `pacal_id` int(11) NOT NULL,
+  `sira_no` int(11) NOT NULL,
+  `hammadde_id` int(11) NOT NULL,
+  `hammadde_parti_no` varchar(100) DEFAULT NULL,
+  `kod` varchar(100) DEFAULT NULL,
+  `yoresi` varchar(100) DEFAULT NULL,
+  `miktar_kg` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `oran` decimal(5,2) NOT NULL DEFAULT 0.00,
+  `kirli_ambar_no` varchar(50) DEFAULT NULL,
+  `yas_ambar_no` varchar(50) DEFAULT NULL,
+  `gluten` decimal(10,2) DEFAULT NULL,
+  `g_index` int(11) DEFAULT NULL,
+  `n_sedim` int(11) DEFAULT NULL,
+  `g_sedim` int(11) DEFAULT NULL,
+  `hektolitre` decimal(10,2) DEFAULT NULL,
+  `nem` decimal(10,2) DEFAULT NULL,
+  `alveo_p` decimal(10,2) DEFAULT NULL,
+  `alveo_g` decimal(10,2) DEFAULT NULL,
+  `alveo_pl` decimal(10,2) DEFAULT NULL,
+  `alveo_w` int(11) DEFAULT NULL,
+  `alveo_ie` decimal(10,2) DEFAULT NULL,
+  `fn` int(11) DEFAULT NULL,
+  `perten_protein` decimal(10,2) DEFAULT NULL,
+  `perten_sertlik` decimal(10,2) DEFAULT NULL,
+  `perten_nisasta` decimal(10,2) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Tablo için tablo yapısı `uretim_silo_cikis_log`
 --
 
@@ -1559,6 +1659,194 @@ CREATE TABLE `uretim_silo_cikis_log` (
   `islem_tarihi` timestamp NULL DEFAULT current_timestamp(),
   `kullanici` varchar(50) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_tavlama_1`
+--
+
+CREATE TABLE `uretim_tavlama_1` (
+  `id` int(11) NOT NULL,
+  `pacal_id` int(11) NOT NULL,
+  `baslama_tarihi` datetime NOT NULL,
+  `bitis_tarihi` datetime DEFAULT NULL,
+  `su_derecesi` decimal(5,2) DEFAULT NULL,
+  `ortam_derecesi` decimal(5,2) DEFAULT NULL,
+  `toplam_tonaj` decimal(10,2) DEFAULT NULL,
+  `karisim_degerleri` varchar(255) DEFAULT NULL,
+  `olusturan` varchar(100) DEFAULT NULL,
+  `olusturma_tarihi` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_tavlama_1_detay`
+--
+
+CREATE TABLE `uretim_tavlama_1_detay` (
+  `id` int(11) NOT NULL,
+  `tavlama_1_id` int(11) NOT NULL,
+  `yas_ambar_no` varchar(50) DEFAULT NULL,
+  `hedef_nem` decimal(5,2) DEFAULT NULL,
+  `nem` decimal(5,2) DEFAULT NULL,
+  `gluten` decimal(5,2) DEFAULT NULL,
+  `g_index` int(11) DEFAULT NULL,
+  `n_sedim` int(11) DEFAULT NULL,
+  `g_sedim` int(11) DEFAULT NULL,
+  `hektolitre` decimal(5,2) DEFAULT NULL,
+  `alveo_p` decimal(5,2) DEFAULT NULL,
+  `alveo_g` decimal(5,2) DEFAULT NULL,
+  `alveo_pl` decimal(5,2) DEFAULT NULL,
+  `alveo_w` int(11) DEFAULT NULL,
+  `alveo_ie` decimal(5,2) DEFAULT NULL,
+  `fn` int(11) DEFAULT NULL,
+  `perten_protein` decimal(5,2) DEFAULT NULL,
+  `perten_sertlik` decimal(5,2) DEFAULT NULL,
+  `perten_nisasta` decimal(5,2) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_tavlama_2`
+--
+
+CREATE TABLE `uretim_tavlama_2` (
+  `id` int(11) NOT NULL,
+  `tavlama_1_id` int(11) NOT NULL,
+  `baslama_tarihi` datetime NOT NULL,
+  `bitis_tarihi` datetime DEFAULT NULL,
+  `su_derecesi` decimal(5,2) DEFAULT NULL,
+  `ortam_derecesi` decimal(5,2) DEFAULT NULL,
+  `toplam_tonaj` decimal(10,2) DEFAULT NULL,
+  `karisim_degerleri` varchar(255) DEFAULT NULL,
+  `olusturan` varchar(100) DEFAULT NULL,
+  `olusturma_tarihi` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_tavlama_2_detay`
+--
+
+CREATE TABLE `uretim_tavlama_2_detay` (
+  `id` int(11) NOT NULL,
+  `tavlama_2_id` int(11) NOT NULL,
+  `yas_ambar_no` varchar(50) DEFAULT NULL,
+  `hedef_nem` decimal(5,2) DEFAULT NULL,
+  `nem` decimal(5,2) DEFAULT NULL,
+  `gluten` decimal(5,2) DEFAULT NULL,
+  `g_index` int(11) DEFAULT NULL,
+  `n_sedim` int(11) DEFAULT NULL,
+  `g_sedim` int(11) DEFAULT NULL,
+  `hektolitre` decimal(5,2) DEFAULT NULL,
+  `alveo_p` decimal(5,2) DEFAULT NULL,
+  `alveo_g` decimal(5,2) DEFAULT NULL,
+  `alveo_pl` decimal(5,2) DEFAULT NULL,
+  `alveo_w` int(11) DEFAULT NULL,
+  `alveo_ie` decimal(5,2) DEFAULT NULL,
+  `fn` int(11) DEFAULT NULL,
+  `perten_protein` decimal(5,2) DEFAULT NULL,
+  `perten_sertlik` decimal(5,2) DEFAULT NULL,
+  `perten_nisasta` decimal(5,2) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_tavlama_3`
+--
+
+CREATE TABLE `uretim_tavlama_3` (
+  `id` int(11) NOT NULL,
+  `tavlama_2_id` int(11) NOT NULL,
+  `baslama_tarihi` datetime NOT NULL,
+  `bitis_tarihi` datetime DEFAULT NULL,
+  `su_derecesi` decimal(5,2) DEFAULT NULL,
+  `ortam_derecesi` decimal(5,2) DEFAULT NULL,
+  `toplam_tonaj` decimal(10,2) DEFAULT NULL,
+  `karisim_degerleri` varchar(255) DEFAULT NULL,
+  `olusturan` varchar(100) DEFAULT NULL,
+  `olusturma_tarihi` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_tavlama_3_detay`
+--
+
+CREATE TABLE `uretim_tavlama_3_detay` (
+  `id` int(11) NOT NULL,
+  `tavlama_3_id` int(11) NOT NULL,
+  `yas_ambar_no` varchar(50) DEFAULT NULL,
+  `hedef_nem` decimal(5,2) DEFAULT NULL,
+  `nem` decimal(5,2) DEFAULT NULL,
+  `gluten` decimal(5,2) DEFAULT NULL,
+  `g_index` int(11) DEFAULT NULL,
+  `n_sedim` int(11) DEFAULT NULL,
+  `g_sedim` int(11) DEFAULT NULL,
+  `hektolitre` decimal(5,2) DEFAULT NULL,
+  `alveo_p` decimal(5,2) DEFAULT NULL,
+  `alveo_g` decimal(5,2) DEFAULT NULL,
+  `alveo_pl` decimal(5,2) DEFAULT NULL,
+  `alveo_w` int(11) DEFAULT NULL,
+  `alveo_ie` decimal(5,2) DEFAULT NULL,
+  `fn` int(11) DEFAULT NULL,
+  `perten_protein` decimal(5,2) DEFAULT NULL,
+  `perten_sertlik` decimal(5,2) DEFAULT NULL,
+  `perten_nisasta` decimal(5,2) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_un1`
+--
+
+CREATE TABLE `uretim_un1` (
+  `id` int(11) NOT NULL,
+  `b1_id` int(11) NOT NULL,
+  `numune_saati` datetime NOT NULL,
+  `olusturan` varchar(100) DEFAULT NULL,
+  `olusturma_tarihi` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `uretim_un1_detay`
+--
+
+CREATE TABLE `uretim_un1_detay` (
+  `id` int(11) NOT NULL,
+  `un1_id` int(11) NOT NULL,
+  `silo_no` varchar(50) DEFAULT NULL,
+  `miktar_kg` decimal(10,2) DEFAULT NULL,
+  `gluten` decimal(5,2) DEFAULT NULL,
+  `g_index` int(11) DEFAULT NULL,
+  `n_sedim` int(11) DEFAULT NULL,
+  `g_sedim` int(11) DEFAULT NULL,
+  `fn` int(11) DEFAULT NULL,
+  `ffn` int(11) DEFAULT NULL,
+  `s_d` decimal(5,2) DEFAULT NULL,
+  `perten_nem` decimal(5,2) DEFAULT NULL,
+  `perten_kul` decimal(5,2) DEFAULT NULL,
+  `perten_nisasta` decimal(5,2) DEFAULT NULL,
+  `perten_renk_b` decimal(5,2) DEFAULT NULL,
+  `perten_renk_l` decimal(5,2) DEFAULT NULL,
+  `perten_protein` decimal(5,2) DEFAULT NULL,
+  `cons_su_kaldirma` decimal(5,2) DEFAULT NULL,
+  `cons_tol` decimal(5,2) DEFAULT NULL,
+  `alveo_t` decimal(5,2) DEFAULT NULL,
+  `alveo_a` decimal(5,2) DEFAULT NULL,
+  `alveo_ta` decimal(5,2) DEFAULT NULL,
+  `alveo_w` int(11) DEFAULT NULL,
+  `alveo_ie` decimal(5,2) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
 
 -- --------------------------------------------------------
 
@@ -2131,6 +2419,18 @@ ALTER TABLE `un_cikis_kayitlari`
   ADD KEY `b1_id` (`b1_id`);
 
 --
+-- Tablo için indeksler `uretim_b1`
+--
+ALTER TABLE `uretim_b1`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_b1_detay`
+--
+ALTER TABLE `uretim_b1_detay`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Tablo için indeksler `uretim_ciktilari`
 --
 ALTER TABLE `uretim_ciktilari`
@@ -2148,9 +2448,69 @@ ALTER TABLE `uretim_hareketleri`
   ADD KEY `idx_yikama_parti` (`yikama_parti_no`);
 
 --
+-- Tablo için indeksler `uretim_pacal`
+--
+ALTER TABLE `uretim_pacal`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_pacal_detay`
+--
+ALTER TABLE `uretim_pacal_detay`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Tablo için indeksler `uretim_silo_cikis_log`
 --
 ALTER TABLE `uretim_silo_cikis_log`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_tavlama_1`
+--
+ALTER TABLE `uretim_tavlama_1`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_tavlama_1_detay`
+--
+ALTER TABLE `uretim_tavlama_1_detay`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_tavlama_2`
+--
+ALTER TABLE `uretim_tavlama_2`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_tavlama_2_detay`
+--
+ALTER TABLE `uretim_tavlama_2_detay`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_tavlama_3`
+--
+ALTER TABLE `uretim_tavlama_3`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_tavlama_3_detay`
+--
+ALTER TABLE `uretim_tavlama_3_detay`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_un1`
+--
+ALTER TABLE `uretim_un1`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `uretim_un1_detay`
+--
+ALTER TABLE `uretim_un1_detay`
   ADD PRIMARY KEY (`id`);
 
 --
@@ -2546,6 +2906,18 @@ ALTER TABLE `un_cikis_kayitlari`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- Tablo için AUTO_INCREMENT değeri `uretim_b1`
+--
+ALTER TABLE `uretim_b1`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_b1_detay`
+--
+ALTER TABLE `uretim_b1_detay`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- Tablo için AUTO_INCREMENT değeri `uretim_ciktilari`
 --
 ALTER TABLE `uretim_ciktilari`
@@ -2558,9 +2930,69 @@ ALTER TABLE `uretim_hareketleri`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- Tablo için AUTO_INCREMENT değeri `uretim_pacal`
+--
+ALTER TABLE `uretim_pacal`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_pacal_detay`
+--
+ALTER TABLE `uretim_pacal_detay`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- Tablo için AUTO_INCREMENT değeri `uretim_silo_cikis_log`
 --
 ALTER TABLE `uretim_silo_cikis_log`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_tavlama_1`
+--
+ALTER TABLE `uretim_tavlama_1`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_tavlama_1_detay`
+--
+ALTER TABLE `uretim_tavlama_1_detay`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_tavlama_2`
+--
+ALTER TABLE `uretim_tavlama_2`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_tavlama_2_detay`
+--
+ALTER TABLE `uretim_tavlama_2_detay`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_tavlama_3`
+--
+ALTER TABLE `uretim_tavlama_3`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_tavlama_3_detay`
+--
+ALTER TABLE `uretim_tavlama_3_detay`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_un1`
+--
+ALTER TABLE `uretim_un1`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Tablo için AUTO_INCREMENT değeri `uretim_un1_detay`
+--
+ALTER TABLE `uretim_un1_detay`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
