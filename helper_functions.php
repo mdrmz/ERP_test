@@ -857,7 +857,7 @@ function bildirimleriGetir($baglanti, $limit = 20, $sadece_okunmamis = false, $a
     $rol_id = isset($_SESSION['rol_id']) ? (int) $_SESSION['rol_id'] : 0;
 
     if ($yon === 'gonderilen') {
-        $where = ["(b.olusturan_user_id = $user_id)", "(b.bildirim_tipi = 'genel')"];
+        $where = ["(b.olusturan_user_id = $user_id)"];
     } else {
         $where = ["(b.hedef_user_id = $user_id OR b.hedef_rol_id = $rol_id OR (b.hedef_user_id IS NULL AND b.hedef_rol_id IS NULL))", "(b.bildirim_tipi != 'genel' OR b.olusturan_user_id != $user_id OR b.olusturan_user_id IS NULL)"];
     }
@@ -1029,7 +1029,7 @@ function tumBildirimleriTemizle($baglanti, $arama_metni = '', $bildirim_tipi = '
     }
 
     if ($yon === 'gonderilen') {
-        $where = ["(b.olusturan_user_id = $user_id)", "(b.bildirim_tipi = 'genel')"];
+        $where = ["(b.olusturan_user_id = $user_id)"];
     } else {
         $where = ["(b.hedef_user_id = $user_id OR b.hedef_rol_id = $rol_id OR (b.hedef_user_id IS NULL AND b.hedef_rol_id IS NULL))", "(b.bildirim_tipi != 'genel' OR b.olusturan_user_id != $user_id OR b.olusturan_user_id IS NULL)"];
     }
@@ -1205,6 +1205,9 @@ function bildirimIkon($tip)
         'onaylandi' => 'fa-check-circle text-success',
         'reddedildi' => 'fa-times-circle text-danger',
         'kantar_bekleniyor' => 'fa-weight text-secondary',
+        'silo_duzeltme_talebi' => 'fa-flag text-danger',
+        'silo_duzeltme_onay' => 'fa-rotate-left text-success',
+        'silo_duzeltme_red' => 'fa-rotate-left text-danger',
         'genel' => 'fa-bell text-primary'
     ];
     return $ikonlar[$tip] ?? $ikonlar['genel'];
