@@ -19,18 +19,26 @@ $hata = "";
 
 // --- 1. YENİ MÜŞTERİ EKLE ---
 if (isset($_POST["musteri_ekle"])) {
+    $kod = $baglanti->real_escape_string($_POST["cari_kod"]);
+    $tip = (strpos($kod, '120') === 0) ? 'Müşteri' : ((strpos($kod, '320') === 0) ? 'Tedarikçi' : 'Müşteri');
     $ad = $baglanti->real_escape_string($_POST["firma_adi"]);
     $yetkili = $baglanti->real_escape_string($_POST["yetkili_kisi"]);
     $tel = $baglanti->real_escape_string($_POST["telefon"]);
     $adres = $baglanti->real_escape_string($_POST["adres"]);
 
-    $sql = "INSERT INTO musteriler (firma_adi, yetkili_kisi, telefon, adres) VALUES ('$ad', '$yetkili', '$tel', '$adres')";
-    if ($baglanti->query($sql)) {
-        $mesaj = "✅ Müşteri eklendi.";
+    // Aynı kodda var mı kontrolü
+    $kontrol = $baglanti->query("SELECT id FROM musteriler WHERE cari_kod = '$kod'");
+    if ($kontrol && $kontrol->num_rows > 0) {
+        $hata = "⚠️ Bu cari kod ($kod) zaten kayıtlı!";
     } else {
-        $hata = "Hata: " . $baglanti->error;
+        $sql = "INSERT INTO musteriler (cari_kod, cari_tip, firma_adi, yetkili_kisi, telefon, adres) 
+                VALUES ('$kod', '$tip', '$ad', '$yetkili', '$tel', '$adres')";
+        if ($baglanti->query($sql)) {
+            $mesaj = "✅ Müşteri eklendi: $ad ($kod)";
+        } else {
+            $hata = "Hata: " . $baglanti->error;
+        }
     }
-}
 
 // --- 2. YENİ SİPARİŞ OLUŞTUR ---
 if (isset($_POST["siparis_olustur"])) {
@@ -132,7 +140,7 @@ if (isset($_POST["sevkiyat_gir"])) {
 
 // VERİLERİ ÇEK
 $musteriler = $baglanti->query("SELECT * FROM musteriler ORDER BY firma_adi");
-$siparisler = $baglanti->query("SELECT s.*, m.firma_adi FROM siparisler s JOIN musteriler m ON s.musteri_id = m.id ORDER BY s.siparis_tarihi DESC");
+$siparisler = $baglanti->query("SELECT s.*, m.firma_adi, m.cari_kod FROM siparisler s JOIN musteriler m ON s.musteri_id = m.id ORDER BY s.siparis_tarihi DESC");
 $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dropdown için)
 
 ?>
@@ -180,7 +188,7 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                 <table class="table table-hover align-middle">
                     <thead class="table-light">
                         <tr>
-                            <th>Kod</th>
+                            <th>Cari Kod</th>
                             <th>Müşteri</th>
                             <th>Sipariş Tarihi</th>
                             <th>Durum</th>
@@ -207,11 +215,10 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                     $renk = 'success';
                                 ?>
                                 <tr>
-                                    <td><strong>
-                                            <?php echo $s['siparis_kodu']; ?>
-                                        </strong></td>
+                                    <td><small class="fw-bold"><?php echo $s['cari_kod']; ?></small></td>
                                     <td>
-                                        <?php echo $s['firma_adi']; ?>
+                                        <div class="fw-bold"><?php echo $s['firma_adi']; ?></div>
+                                        <div class="small text-muted"><?php echo $s['siparis_kodu']; ?></div>
                                     </td>
                                     <td>
                                         <?php echo date("d.m.Y", strtotime($s['siparis_tarihi'])); ?>
@@ -267,9 +274,12 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                 <select name="musteri_id" class="form-select" required>
                                     <option value="">Seçiniz...</option>
                                     <?php
-                                    $musteriler->data_seek(0);
-                                    while ($m = $musteriler->fetch_assoc())
-                                        echo "<option value='{$m['id']}'>{$m['firma_adi']}</option>";
+                                    if ($musteriler && $musteriler->num_rows > 0) {
+                                        $musteriler->data_seek(0);
+                                        while ($m = $musteriler->fetch_assoc()) {
+                                            echo "<option value='{$m['id']}'>[{$m['cari_kod']}] {$m['firma_adi']}</option>";
+                                        }
+                                    }
                                     ?>
                                 </select>
                             </div>
@@ -375,34 +385,47 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
         </div>
     </div>
 
-    <!-- MODAL: YENİ MÜŞTERİ -->
+    <!-- MODAL: YENİ MÜŞTERİ (CRM UYUMLU) -->
     <div class="modal fade" id="yeniMusteriModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <form method="post">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Yeni Müşteri</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title"><i class="fas fa-user-plus me-2"></i>Hızlı Müşteri Kaydı</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label>Firma Adı</label>
-                            <input type="text" name="firma_adi" class="form-control" required>
+                    <div class="modal-body bg-light">
+                        <div class="row g-2">
+                            <div class="col-md-5 mb-3">
+                                <label class="form-label fw-bold small">Cari Kod *</label>
+                                <input type="text" name="cari_kod" class="form-control" placeholder="120.XX.XXX" required>
+                                <div class="form-text small" style="font-size:0.65rem;">120: Müşteri, 320: Tedarikçi</div>
+                            </div>
+                            <div class="col-md-7 mb-3">
+                                <label class="form-label fw-bold small">Firma Ünvanı *</label>
+                                <input type="text" name="firma_adi" class="form-control" required>
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Yetkili Kişi</label>
+                                <input type="text" name="yetkili_kisi" class="form-control">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Telefon</label>
+                                <input type="text" name="telefon" class="form-control">
+                            </div>
                         </div>
                         <div class="mb-3">
-                            <label>Yetkili Kişi</label>
-                            <input type="text" name="yetkili_kisi" class="form-control">
+                            <label class="form-label fw-bold small">Açık Adres</label>
+                            <textarea name="adres" class="form-control" rows="2"></textarea>
                         </div>
-                        <div class="mb-3">
-                            <label>Telefon</label>
-                            <input type="text" name="telefon" class="form-control">
-                        </div>
-                        <div class="mb-3">
-                            <label>Adres</label>
-                            <textarea name="adres" class="form-control"></textarea>
+                        <div class="alert alert-info py-2 small mb-0">
+                            <i class="fas fa-info-circle me-1"></i> Daha detaylı vergi ve iletişim bilgileri için <a href="musteriler.php" class="alert-link">Müşteri Yönetimi</a> sayfasını kullanın.
                         </div>
                     </div>
                     <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
                         <button type="submit" name="musteri_ekle" class="btn btn-primary">Kaydet</button>
                     </div>
                 </form>
