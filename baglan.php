@@ -4,7 +4,7 @@ mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 $host = "localhost";
 $kullanici = "root";
-$sifre = ""; // Burayı düzeltmeyi unutma!
+$sifre = "";
 $veritabani = "yonetim_paneli";
 
 $baglanti = new mysqli($host, $kullanici, $sifre, $veritabani);

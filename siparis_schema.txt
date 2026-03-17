@@ -1,0 +1,10 @@
+--- siparisler ---
+id (int(11)) | musteri_id (int(11)) | alici_adi (varchar(255)) | siparis_kodu (varchar(20)) | siparis_tarihi (date) | teslim_tarihi (date) | odeme_tarihi (date) | durum (varchar(20)) | toplam_tutar (decimal(10,2)) | aciklama (text) | olusturan_user_id (int(11)) | genel_toplam (decimal(10,2)) | 
+--- siparis_detaylari ---
+id (int(11)) | siparis_id (int(11)) | urun_adi (varchar(100)) | miktar (int(11)) | birim (varchar(10)) | birim_fiyat (decimal(10,2)) | toplam_fiyat (decimal(10,2)) | sevk_edilen_miktar (int(11)) | 
+--- sevkiyatlar ---
+id (int(11)) | parti_no (varchar(50)) | musteri_adi (varchar(100)) | sevk_tarihi (datetime) | sevk_miktari (decimal(10,2)) | birim (varchar(20)) | irsaliye_no (varchar(50)) | fatura_no (varchar(50)) | arac_plaka (varchar(20)) | sofor_adi (varchar(100)) | sofor_telefon (varchar(20)) | kanit_belgesi (varchar(255)) | sevk_eden_user_id (int(11)) | onay_durum (varchar(20)) | kayit_tarihi (datetime) | 
+--- sevkiyat_icerik ---
+id (int(11)) | sevkiyat_id (int(11)) | urun_id (int(11)) | miktar (decimal(10,2)) | parti_no (varchar(50)) | 
+--- sevkiyat_randevulari ---
+id (int(11)) | musteri_adi (varchar(100)) | randevu_tarihi (datetime) | urun_id (int(11)) | miktar_ton (decimal(10,2)) | arac_plaka (varchar(20)) | sofor_adi (varchar(100)) | durum (varchar(20)) | onay_durum (varchar(20)) | onaylayan_user_id (int(11)) | onay_tarihi (datetime) | 

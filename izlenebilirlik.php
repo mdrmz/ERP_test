@@ -90,13 +90,13 @@ if (isset($_GET["sorgula"])) {
         $hikaye["hammadde"] = $hammadde;
     }
 
-    // 7. YIKAMA KAYITLARI
+    // 7. YIKAMA KAYİTLARI
     $yikama = @$baglanti->query("SELECT * FROM yikama_kayitlari WHERE parti_no = '$aranan_parti'")->fetch_assoc();
     if ($yikama) {
         $hikaye["yikama"] = $yikama;
         $found = true;
 
-        // İlişkili kayıtları da getir
+        // İlişkili kayıtları da getir (Eski akış devam ediyor ama yenileri de ekliyoruz)
         $aktarma = @$baglanti->query("SELECT * FROM aktarma_kayitlari WHERE yikama_id = {$yikama['id']}")->fetch_assoc();
         if ($aktarma) {
             $hikaye["aktarma"] = $aktarma;
@@ -108,6 +108,62 @@ if (isset($_GET["sorgula"])) {
                 $un_cikis = @$baglanti->query("SELECT * FROM un_cikis_kayitlari WHERE b1_id = {$b1['id']}")->fetch_assoc();
                 if ($un_cikis) {
                     $hikaye["un_cikis"] = $un_cikis;
+                }
+            }
+        }
+    }
+
+    // 8. YENİ ÜRETİM MODÜLÜ VERİLERİ (Paçal -> Tav 1 -> Tav 2 -> Tav 3 -> B1 -> Un 1)
+    // Bu kısım parti_no üzerinden uretim_pacal tablosundan başlar
+    $pacal = @$baglanti->query("SELECT * FROM uretim_pacal WHERE parti_no = '$aranan_parti'")->fetch_assoc();
+    if ($pacal) {
+        $hikaye["uretim_pacal"] = $pacal;
+        $found = true;
+
+        // Paçal Detayları (Buğdaylar)
+        $pacal_id = $pacal['id'];
+        $hikaye["uretim_pacal_detay"] = [];
+        $pd_res = $baglanti->query("SELECT pd.*, h.ad as bugday_adi FROM uretim_pacal_detay pd LEFT JOIN hammaddeler h ON pd.hammadde_id = h.id WHERE pd.pacal_id = $pacal_id ORDER BY pd.sira_no ASC");
+        while($pd = @$pd_res->fetch_assoc()) {
+            $hikaye["uretim_pacal_detay"][] = $pd;
+        }
+
+        // Tavlama 1
+        $t1 = @$baglanti->query("SELECT * FROM uretim_tavlama_1 WHERE pacal_id = $pacal_id")->fetch_assoc();
+        if ($t1) {
+            $hikaye["tavlama1"] = $t1;
+            $t1_id = $t1['id'];
+            $hikaye["tavlama1_detay"] = @$baglanti->query("SELECT * FROM uretim_tavlama_1_detay WHERE tavlama_1_id = $t1_id")->fetch_assoc();
+
+            // Tavlama 2
+            $t2 = @$baglanti->query("SELECT * FROM uretim_tavlama_2 WHERE tavlama_1_id = $t1_id")->fetch_assoc();
+            if ($t2) {
+                $hikaye["tavlama2"] = $t2;
+                $t2_id = $t2['id'];
+                $hikaye["tavlama2_detay"] = @$baglanti->query("SELECT * FROM uretim_tavlama_2_detay WHERE tavlama_2_id = $t2_id")->fetch_assoc();
+
+                // Tavlama 3
+                $t3 = @$baglanti->query("SELECT * FROM uretim_tavlama_3 WHERE tavlama_2_id = $t2_id")->fetch_assoc();
+                if ($t3) {
+                    $hikaye["tavlama3"] = $t3;
+                    $t3_id = $t3['id'];
+                    $hikaye["tavlama3_detay"] = @$baglanti->query("SELECT * FROM uretim_tavlama_3_detay WHERE tavlama_3_id = $t3_id")->fetch_assoc();
+
+                    // B1
+                    $ub1 = @$baglanti->query("SELECT * FROM uretim_b1 WHERE tavlama_3_id = $t3_id")->fetch_assoc();
+                    if ($ub1) {
+                        $hikaye["ub1"] = $ub1;
+                        $ub1_id = $ub1['id'];
+                        $hikaye["ub1_detay"] = @$baglanti->query("SELECT * FROM uretim_b1_detay WHERE b1_id = $ub1_id")->fetch_assoc();
+
+                        // Un 1
+                        $un1 = @$baglanti->query("SELECT * FROM uretim_un1 WHERE b1_id = $ub1_id")->fetch_assoc();
+                        if ($un1) {
+                            $hikaye["uun1"] = $un1;
+                            $un1_id = $un1['id'];
+                            $hikaye["uun1_detay"] = @$baglanti->query("SELECT * FROM uretim_un1_detay WHERE un1_id = $un1_id")->fetch_assoc();
+                        }
+                    }
                 }
             }
         }
@@ -301,6 +357,146 @@ if (isset($_GET["sorgula"])) {
                                         </p>
                                         <p class="mb-0"><strong>Üretilen:</strong>
                                             <?php echo $hikaye["uretim"]["uretilen_miktar_kg"]; ?> kg</p>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php } ?>
+
+                        <!-- 4.1. UN 1 LABORATUVAR (Yeni Modül) -->
+                        <?php if (isset($hikaye["uun1"])) { ?>
+                            <div class="timeline-item">
+                                <div class="timeline-icon" style="background: #27ae60;"><i class="fas fa-microscope fa-lg"></i></div>
+                                <div class="card border-0 shadow-sm border-start border-success border-4">
+                                    <div class="card-body">
+                                        <h5 class="fw-bold text-success">🧪 Un 1 Laboratuvar Analizi</h5>
+                                        <p class="text-muted mb-1"><i class="far fa-clock"></i>
+                                            <?php echo date("d.m.Y H:i", strtotime($hikaye["uun1"]["numune_saati"])); ?></p>
+                                        <hr>
+                                        <?php if ($hikaye["uun1_detay"]) { 
+                                            $ud = $hikaye["uun1_detay"]; ?>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <span class="lab-badge bg-success text-white">Protein: <b>%<?php echo $ud["perten_protein"]; ?></b></span>
+                                                <span class="lab-badge">Nem: <b>%<?php echo $ud["perten_nem"]; ?></b></span>
+                                                <span class="lab-badge">Kül: <b><?php echo $ud["perten_kul"]; ?></b></span>
+                                                <span class="lab-badge">Gluten: <b>%<?php echo $ud["gluten"]; ?></b></span>
+                                                <span class="lab-badge bg-warning text-dark">Index: <b><?php echo $ud["g_index"]; ?></b></span>
+                                                <span class="lab-badge">W (Alveo): <b><?php echo $ud["alveo_w"]; ?></b></span>
+                                            </div>
+                                        <?php } ?>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php } ?>
+
+                        <!-- 4.2. B1 DEĞİRMEN (Yeni Modül) -->
+                        <?php if (isset($hikaye["ub1"])) { ?>
+                            <div class="timeline-item">
+                                <div class="timeline-icon" style="background: #34495e;"><i class="fas fa-industry fa-lg"></i></div>
+                                <div class="card border-0 shadow-sm border-start border-dark border-4">
+                                    <div class="card-body">
+                                        <h5 class="fw-bold text-dark">⚙️ B1 Değirmen İşlemi</h5>
+                                        <p class="text-muted mb-1"><i class="far fa-clock"></i>
+                                            <?php echo date("d.m.Y H:i", strtotime($hikaye["ub1"]["baslama_tarihi"])); ?></p>
+                                        <hr>
+                                        <div class="row">
+                                            <div class="col-6"><strong>Tonaj:</strong> <?php echo $hikaye["ub1"]["b1_tonaj"]; ?> Ton</div>
+                                            <div class="col-6"><strong>Su Derecesi:</strong> <?php echo $hikaye["ub1"]["su_derecesi"]; ?>°C</div>
+                                        </div>
+                                        <?php if ($hikaye["ub1_detay"]) { 
+                                            $bd = $hikaye["ub1_detay"]; ?>
+                                            <div class="mt-2 d-flex flex-wrap gap-2">
+                                                <span class="lab-badge">Hektolitre: <b><?php echo $bd["hektolitre"]; ?></b></span>
+                                                <span class="lab-badge">Protein: <b>%<?php echo $bd["perten_protein"]; ?></b></span>
+                                                <span class="lab-badge">Nem: <b>%<?php echo $bd["nem"]; ?></b></span>
+                                            </div>
+                                        <?php } ?>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php } ?>
+
+                        <!-- 4.3. TAVLAMA AŞAMALARI -->
+                        <?php for ($i = 3; $i >= 1; $i--) { 
+                            $t_key = "tavlama".$i;
+                            $td_key = "tavlama".$i."_detay";
+                            if (isset($hikaye[$t_key])) { 
+                                $t_data = $hikaye[$t_key];
+                                $td_data = $hikaye[$td_key];
+                                $t_color = ($i == 3) ? '#e67e22' : (($i == 2) ? '#f39c12' : '#f1c40f');
+                                ?>
+                                <div class="timeline-item">
+                                    <div class="timeline-icon" style="background: <?php echo $t_color; ?>;"><i class="fas fa-droplet fa-lg"></i></div>
+                                    <div class="card border-0 shadow-sm border-start border-4" style="border-color: <?php echo $t_color; ?> !important;">
+                                        <div class="card-body">
+                                            <h5 class="fw-bold" style="color: <?php echo $t_color; ?>;">💧 Tavlama <?php echo $i; ?></h5>
+                                            <p class="text-muted mb-1"><i class="far fa-clock"></i>
+                                                <?php echo date("d.m.Y H:i", strtotime($t_data["baslama_tarihi"])); ?></p>
+                                            <hr>
+                                            <div class="row">
+                                                <div class="col-6"><strong>Top. Tonaj:</strong> <?php echo $t_data["toplam_tonaj"]; ?> Ton</div>
+                                                <div class="col-6"><strong>Ortam Derecesi:</strong> <?php echo $t_data["ortam_derecesi"]; ?>°C</div>
+                                            </div>
+                                            <?php if ($td_data) { ?>
+                                                <div class="mt-2 d-flex flex-wrap gap-2">
+                                                    <span class="lab-badge">Hedef Nem: <b>%<?php echo $td_data["hedef_nem"]; ?></b></span>
+                                                    <span class="lab-badge">Ölçülen Nem: <b>%<?php echo $td_data["nem"]; ?></b></span>
+                                                    <span class="lab-badge">Protein: <b>%<?php echo $td_data["perten_protein"]; ?></b></span>
+                                                </div>
+                                            <?php } ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php } 
+                        } ?>
+
+                        <!-- 4.4. PAÇAL (BUĞDAY KARIŞIMI) -->
+                        <?php if (isset($hikaye["uretim_pacal"])) { ?>
+                            <div class="timeline-item">
+                                <div class="timeline-icon" style="background: #1abc9c;"><i class="fas fa-blender fa-lg"></i></div>
+                                <div class="card border-0 shadow-sm border-start border-teal border-4" style="border-color: #1abc9c !important;">
+                                    <div class="card-body">
+                                        <h5 class="fw-bold" style="color: #1abc9c;">🥣 Paçal (Buğday Karışımı)</h5>
+                                        <p class="text-muted mb-1"><i class="far fa-clock"></i>
+                                            <?php echo date("d.m.Y", strtotime($hikaye["uretim_pacal"]["tarih"])); ?></p>
+                                        <hr>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-bordered mb-0">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Buğday Cinsi</th>
+                                                        <th>Yöre</th>
+                                                        <th>Miktar (Kg)</th>
+                                                        <th>Oran (%)</th>
+                                                        <th>Protein</th>
+                                                        <th>Gluten</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ($hikaye["uretim_pacal_detay"] as $pd) { ?>
+                                                        <tr>
+                                                            <td><?php echo $pd["bugday_adi"]; ?></td>
+                                                            <td class="small"><?php echo $pd["yoresi"]; ?></td>
+                                                            <td><?php echo number_format($pd["miktar_kg"], 0, ',', '.'); ?></td>
+                                                            <td class="fw-bold text-primary">%<?php echo $pd["oran"]; ?></td>
+                                                            <td>%<?php echo $pd["perten_protein"]; ?></td>
+                                                            <td>%<?php echo $pd["gluten"]; ?></td>
+                                                        </tr>
+                                                    <?php } ?>
+                                                </tbody>
+                                                <tfoot class="table-light fw-bold">
+                                                    <tr>
+                                                        <td colspan="2">TOPLAM</td>
+                                                        <td><?php echo number_format($hikaye["uretim_pacal"]["toplam_miktar_kg"], 0, ',', '.'); ?></td>
+                                                        <td colspan="3">%100</td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                        <?php if (!empty($hikaye["uretim_pacal"]["notlar"])) { ?>
+                                            <div class="mt-3 p-2 bg-light rounded small italic">
+                                                <strong>Notlar:</strong> <?php echo $hikaye["uretim_pacal"]["notlar"]; ?>
+                                            </div>
+                                        <?php } ?>
                                     </div>
                                 </div>
                             </div>

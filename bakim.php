@@ -165,6 +165,33 @@ if (isset($_POST["bakim_ekle"])) {
     }
 }
 
+// --- 5. LAB MALZEME EKLEME ---
+if (isset($_POST["lab_malzeme_ekle"])) {
+    $ad = $baglanti->real_escape_string($_POST["malzeme_adi"]);
+    $miktar = (float) $_POST["miktar"];
+    $birim = $baglanti->real_escape_string($_POST["birim"]);
+    $alan = $baglanti->real_escape_string($_POST["kullanim_alani"]);
+    $kritik = (float) $_POST["kritik_seviye"];
+
+    $sql = "INSERT INTO bakim_lab_malzemeler (malzeme_adi, miktar, birim, kullanim_alani, kritik_seviye) VALUES ('$ad', $miktar, '$birim', '$alan', $kritik)";
+    if ($baglanti->query($sql)) {
+        $mesaj = "✅ Lab malzemesi eklendi: $ad";
+        systemLogKaydet($baglanti, "INSERT", "Bakım & Arıza", "Yeni lab malzemesi eklendi: $ad");
+    } else {
+        $hata = "Hata: " . $baglanti->error;
+    }
+}
+
+// --- 6. LAB MALZEME SİLME ---
+if (isset($_GET["lab_malzeme_sil"])) {
+    $id = (int) $_GET["lab_malzeme_sil"];
+    if ($baglanti->query("DELETE FROM bakim_lab_malzemeler WHERE id = $id")) {
+        $mesaj = "✅ Malzeme silindi.";
+    } else {
+        $hata = "Hata: " . $baglanti->error;
+    }
+}
+
 // İSTATİSTİKLER
 $stats = [
     'gecikmis' => $baglanti->query("SELECT COUNT(*) as sayi FROM makineler WHERE aktif = 1 AND sonraki_bakim_tarihi < CURRENT_DATE")->fetch_assoc()['sayi'],
@@ -175,6 +202,7 @@ $stats = [
 // LİSTELERİ ÇEK
 $makineler = $baglanti->query("SELECT * FROM makineler WHERE aktif = 1 ORDER BY sonraki_bakim_tarihi ASC");
 $gecmis = $baglanti->query("SELECT b.*, m.makine_adi FROM bakim_kayitlari b JOIN makineler m ON b.makine_id = m.id ORDER BY b.bakim_tarihi DESC LIMIT 20");
+$lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY malzeme_adi ASC");
 ?>
 
 <!DOCTYPE html>
@@ -459,6 +487,7 @@ $gecmis = $baglanti->query("SELECT b.*, m.makine_adi FROM bakim_kayitlari b JOIN
                             <button class="filter-btn" data-filter="Öğütme Ünitesi">Öğütme</button>
                             <button class="filter-btn" data-filter="Un Ünitesi">Un</button>
                             <button class="filter-btn" data-filter="Kepek Ünitesi">Kepek</button>
+                            <button class="filter-btn" data-filter="Laboratuvar">Laboratuvar</button>
                         </div>
                     </div>
 
@@ -609,6 +638,57 @@ $gecmis = $baglanti->query("SELECT b.*, m.makine_adi FROM bakim_kayitlari b JOIN
                         </ul>
                     </div>
                 </div>
+
+                <!-- LABORATUVAR MALZEMELERİ -->
+                <div class="card border-0 shadow-sm mt-4">
+                    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0 fw-bold"><i class="fas fa-flask text-info me-2"></i>Lab Malzeme Stokları</h5>
+                        <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#labMalzemeModal">
+                            <i class="fas fa-plus me-1"></i>Ekle
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" style="font-size: 0.85rem;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Malzeme</th>
+                                        <th>Stok</th>
+                                        <th>Alan</th>
+                                        <th class="text-end px-3">İşlem</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if ($lab_malzemeler && $lab_malzemeler->num_rows > 0): ?>
+                                        <?php while($lm = $lab_malzemeler->fetch_assoc()): 
+                                            $kritik = $lm['miktar'] <= $lm['kritik_seviye'];
+                                        ?>
+                                        <tr>
+                                            <td>
+                                                <strong><?php echo htmlspecialchars($lm['malzeme_adi']); ?></strong>
+                                                <?php if($kritik): ?>
+                                                    <i class="fas fa-exclamation-circle text-danger ms-1" title="Kritik Seviye!"></i>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td class="<?php echo $kritik ? 'text-danger fw-bold' : ''; ?>">
+                                                <?php echo $lm['miktar'] . " " . $lm['birim']; ?>
+                                            </td>
+                                            <td class="text-muted"><?php echo htmlspecialchars($lm['kullanim_alani']); ?></td>
+                                            <td class="text-end px-3">
+                                                <a href="?lab_malzeme_sil=<?php echo $lm['id']; ?>" class="text-danger" onclick="return confirm('Silmek istediğinize emin misiniz?')">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        <?php endwhile; ?>
+                                    <?php else: ?>
+                                        <tr><td colspan="4" class="text-center py-4 text-muted">Kayıt yok.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -646,6 +726,7 @@ $gecmis = $baglanti->query("SELECT b.*, m.makine_adi FROM bakim_kayitlari b JOIN
                                     <option value="Öğütme Ünitesi">Öğütme Ünitesi</option>
                                     <option value="Un Ünitesi">Un Ünitesi</option>
                                     <option value="Kepek Ünitesi">Kepek Ünitesi</option>
+                                    <option value="Laboratuvar">Laboratuvar</option>
                                 </select>
                             </div>
                             <div class="col-6 mb-3">
@@ -724,6 +805,7 @@ $gecmis = $baglanti->query("SELECT b.*, m.makine_adi FROM bakim_kayitlari b JOIN
                                     <option value="Öğütme Ünitesi">Öğütme Ünitesi</option>
                                     <option value="Un Ünitesi">Un Ünitesi</option>
                                     <option value="Kepek Ünitesi">Kepek Ünitesi</option>
+                                    <option value="Laboratuvar">Laboratuvar</option>
                                 </select>
                             </div>
                             <div class="col-6 mb-3">
@@ -818,6 +900,107 @@ $gecmis = $baglanti->query("SELECT b.*, m.makine_adi FROM bakim_kayitlari b JOIN
                     <div class="modal-footer border-0 p-4 pt-0">
                         <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">İptal</button>
                         <button type="submit" name="bakim_ekle" class="btn btn-success px-4">Kaydı Tamamla</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- LAB MALZEME EKLEME MODAL -->
+    <div class="modal fade" id="labMalzemeModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow-lg">
+                <form method="post">
+                    <div class="modal-header bg-info text-white">
+                        <h5 class="modal-title fw-bold">Lab Malzemesi Ekle</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">Malzeme Adı</label>
+                            <input type="text" name="malzeme_adi" class="form-control border-0 bg-light"
+                                placeholder="Örn: Sülfürik Asit" required>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-6 mb-3">
+                                <label class="form-label small fw-bold text-muted">Miktar</label>
+                                <input type="number" step="0.01" name="miktar" class="form-control border-0 bg-light"
+                                    required>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label small fw-bold text-muted">Birim</label>
+                                <select name="birim" class="form-select border-0 bg-light">
+                                    <option value="Litre">Litre</option>
+                                    <option value="Kg">Kg</option>
+                                    <option value="Gram">Gram</option>
+                                    <option value="Adet">Adet</option>
+                                    <option value="Paket">Paket</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">Kullanım Alanı</label>
+                            <input type="text" name="kullanim_alani" class="form-control border-0 bg-light"
+                                placeholder="Örn: Protein Analizi">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">Kritik Stok Seviyesi</label>
+                            <input type="number" step="0.01" name="kritik_seviye" class="form-control border-0 bg-light"
+                                value="1.00">
+                        </div>
+                    </div>
+                    <div class="modal-footer border-0 p-4 pt-0">
+                        <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">İptal</button>
+                        <button type="submit" name="lab_malzeme_ekle"
+                            class="btn btn-info text-white px-4">Kaydet</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- LAB MALZEME EKLEME MODAL -->
+    <div class="modal fade" id="labMalzemeModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow-lg">
+                <form method="post">
+                    <div class="modal-header bg-info text-white">
+                        <h5 class="modal-title fw-bold">Lab Malzemesi Ekle</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">Malzeme Adı</label>
+                            <input type="text" name="malzeme_adi" class="form-control border-0 bg-light" placeholder="Örn: Sülfürik Asit" required>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-6 mb-3">
+                                <label class="form-label small fw-bold text-muted">Miktar</label>
+                                <input type="number" step="0.01" name="miktar" class="form-control border-0 bg-light" required>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label small fw-bold text-muted">Birim</label>
+                                <select name="birim" class="form-select border-0 bg-light">
+                                    <option value="Litre">Litre</option>
+                                    <option value="Kg">Kg</option>
+                                    <option value="Gram">Gram</option>
+                                    <option value="Adet">Adet</option>
+                                    <option value="Paket">Paket</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">Kullanım Alanı</label>
+                            <input type="text" name="kullanim_alani" class="form-control border-0 bg-light" placeholder="Örn: Protein Analizi">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">Kritik Stok Seviyesi</label>
+                            <input type="number" step="0.01" name="kritik_seviye" class="form-control border-0 bg-light" value="1.00">
+                        </div>
+                    </div>
+                    <div class="modal-footer border-0 p-4 pt-0">
+                        <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">İptal</button>
+                        <button type="submit" name="lab_malzeme_ekle" class="btn btn-info text-white px-4">Kaydet</button>
                     </div>
                 </form>
             </div>

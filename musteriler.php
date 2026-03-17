@@ -78,13 +78,17 @@ if ($secili_musteri_id > 0) {
         // En güncel ve doğru veri çekimi:
         $sql_gecmis = "
             SELECT 
+                s.id as sid,
                 s.siparis_kodu, 
                 s.siparis_tarihi, 
                 s.durum, 
+                s.aciklama,
+                s.alici_adi,
+                s.odeme_tarihi,
                 sd.urun_adi, 
                 sd.miktar, 
                 sd.birim,
-                (SELECT GROUP_CONCAT(parti_no SEPARATOR ', ') FROM sevkiyatlar WHERE musteri_adi = '{$secili_musteri['firma_adi']}') as parti_nolar
+                (SELECT GROUP_CONCAT(parti_no SEPARATOR ', ') FROM sevkiyatlar WHERE siparis_id = s.id) as parti_nolar
             FROM siparisler s
             JOIN siparis_detaylari sd ON s.id = sd.siparis_id
             WHERE s.musteri_id = $secili_musteri_id
@@ -226,10 +230,10 @@ if ($secili_musteri_id > 0) {
                                         <tr>
                                             <th>Sipariş Kodu</th>
                                             <th>Tarih</th>
-                                            <th>Ürün</th>
-                                            <th>Miktar</th>
+                                            <th>Detaylar (Alıcı / Onay / İstekler)</th>
+                                            <th>Ürün / Miktar</th>
                                             <th>Durum</th>
-                                            <th>İzlenebilirlik Kodları (Parti No)</th>
+                                            <th>İzlenebilirlik Kodları</th>
                                             <th>İşlem</th>
                                         </tr>
                                     </thead>
@@ -252,10 +256,22 @@ if ($secili_musteri_id > 0) {
                                                             <?php echo date("d.m.Y", strtotime($s['siparis_tarihi'])); ?>
                                                         </small></td>
                                                     <td>
-                                                        <?php echo $s['urun_adi']; ?>
+                                                        <?php if (!empty($s['alici_adi'])): ?>
+                                                            <div class="small fw-bold text-primary"><i class="fas fa-user-tag me-1"></i><?php echo $s['alici_adi']; ?></div>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($s['odeme_tarihi'])): ?>
+                                                            <div class="small text-danger"><i class="fas fa-calendar-check me-1"></i>Ödeme: <?php echo date("d.m.Y", strtotime($s['odeme_tarihi'])); ?></div>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($s['aciklama'])): ?>
+                                                            <div class="small text-muted mt-1 fst-italic"><i class="fas fa-comment-dots me-1"></i><?php echo htmlspecialchars($s['aciklama']); ?></div>
+                                                        <?php endif; ?>
+                                                        <?php if (empty($s['alici_adi']) && empty($s['odeme_tarihi']) && empty($s['aciklama'])): ?>
+                                                            <span class="text-muted small">-</span>
+                                                        <?php endif; ?>
                                                     </td>
                                                     <td>
-                                                        <?php echo $s['miktar'] . ' ' . $s['birim']; ?>
+                                                        <div class="fw-bold"><?php echo $s['urun_adi']; ?></div>
+                                                        <div class="small text-muted"><?php echo $s['miktar'] . ' ' . $s['birim']; ?></div>
                                                     </td>
                                                     <td><span class="badge bg-<?php echo $renk; ?>">
                                                             <?php echo $s['durum']; ?>
@@ -285,9 +301,9 @@ if ($secili_musteri_id > 0) {
                                                             if (!empty($ilk_parti)) {
                                                                 ?>
                                                                 <a href="izlenebilirlik.php?sorgula=1&parti_no=<?php echo urlencode($ilk_parti); ?>"
-                                                                    class="btn btn-sm btn-info text-white" target="_blank"
-                                                                    title="İzlenebilirlik Raporunu Göster">
-                                                                    <i class="fas fa-search"></i> Rapor
+                                                                    class="btn btn-sm btn-success fw-bold text-white shadow-sm" target="_blank"
+                                                                    title="Hammaddeden Çıkışa İzlenebilirlik Raporunu Göster">
+                                                                    <i class="fas fa-route me-1"></i> İzlenebilirlik Raporu
                                                                 </a>
                                                             <?php } ?>
                                                         <?php } ?>

@@ -22,12 +22,16 @@ if (isset($_POST["siparis_olustur"])) {
     $musteri_id = (int) $_POST["musteri_id"];
     $tarih = $_POST["siparis_tarihi"];
     $teslim = $_POST["teslim_tarihi"];
+    $alici = isset($_POST["alici_adi"]) ? $baglanti->real_escape_string($_POST["alici_adi"]) : "";
+    $odeme = isset($_POST["odeme_tarihi"]) ? $_POST["odeme_tarihi"] : null;
+    if (empty($odeme)) $odeme = null;
     $aciklama = $baglanti->real_escape_string($_POST["aciklama"]);
     $siparis_kodu = "SIP-" . date("Ymd") . "-" . rand(100, 999);
 
     // Ana Sipariş Kaydı
-    $sql_baslik = "INSERT INTO siparisler (musteri_id, siparis_kodu, siparis_tarihi, teslim_tarihi, aciklama, durum) 
-                   VALUES ($musteri_id, '$siparis_kodu', '$tarih', '$teslim', '$aciklama', 'Bekliyor')";
+    $odeme_sql = $odeme ? "'$odeme'" : "NULL";
+    $sql_baslik = "INSERT INTO siparisler (musteri_id, siparis_kodu, siparis_tarihi, teslim_tarihi, alici_adi, odeme_tarihi, aciklama, durum) 
+                   VALUES ($musteri_id, '$siparis_kodu', '$tarih', '$teslim', '$alici', $odeme_sql, '$aciklama', 'Bekliyor')";
 
     if ($baglanti->query($sql_baslik)) {
         $siparis_id = $baglanti->insert_id;
@@ -50,6 +54,7 @@ if (isset($_POST["siparis_olustur"])) {
         // Log Modülü
         systemLogKaydet($baglanti, 'INSERT', 'Pazarlama', "Yeni sipariş girildi: $siparis_kodu");
 
+        $yeni_siparis_id = $siparis_id;
         $mesaj = "✅ Sipariş başarıyla oluşturuldu: $siparis_kodu (Depo yöneticisine iletildi)";
     } else {
         $hata = "Sipariş oluşturulurken hata: " . $baglanti->error;
@@ -58,7 +63,6 @@ if (isset($_POST["siparis_olustur"])) {
 
 // Gerekli verileri çek (Sadece form için, listeleme detayları gizli)
 $musteriler = $baglanti->query("SELECT id, firma_adi, yetkili_kisi FROM musteriler ORDER BY firma_adi");
-$urunler_list = $baglanti->query("SELECT urun_adi FROM urunler ORDER BY urun_adi");
 
 ?>
 <!DOCTYPE html>
@@ -98,6 +102,7 @@ $urunler_list = $baglanti->query("SELECT urun_adi FROM urunler ORDER BY urun_adi
 
 
                 <!-- Canlı Depo Stokları -->
+                <!-- Pazarlama ekibinin stokları görmemesi talep edildiği için bu bölüm yorum satırına alınmıştır.
                 <div class="card shadow-sm border-0 mb-4">
                     <div class="card-header bg-dark text-white py-2">
                         <h6 class="mb-0"><i class="fas fa-warehouse me-2"></i>Güncel Depo Stokları (Paketlenmiş
@@ -136,6 +141,7 @@ $urunler_list = $baglanti->query("SELECT urun_adi FROM urunler ORDER BY urun_adi
                         </div>
                     </div>
                 </div>
+                -->
 
                 <div class="card shadow-sm pazarlama-card border-0">
                     <div class="card-header bg-white py-3">
@@ -172,6 +178,19 @@ $urunler_list = $baglanti->query("SELECT urun_adi FROM urunler ORDER BY urun_adi
                                         value="<?php echo date('Y-m-d', strtotime('+3 days')); ?>" required>
                                 </div>
                             </div>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6 mb-3 mb-md-0">
+                                    <label class="form-label fw-bold">Alıcı Adı / Soyadı</label>
+                                    <input type="text" name="alici_adi" class="form-control" placeholder="Örn: Ahmet Yılmaz">
+                                    <div class="form-text text-muted">Açık hesap veya farklı kişiye teslim edilecekse.</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">Planlanan Ödeme Tarihi</label>
+                                    <input type="date" name="odeme_tarihi" class="form-control">
+                                    <div class="form-text text-muted">Vade veya ödeme beklenen tarih.</div>
+                                </div>
+                            </div>
 
                             <hr class="bg-light my-4">
 
@@ -185,17 +204,7 @@ $urunler_list = $baglanti->query("SELECT urun_adi FROM urunler ORDER BY urun_adi
                                 <div class="row mb-2 align-items-end urun-satiri">
                                     <div class="col-md-6 mb-2 mb-md-0">
                                         <label class="form-label small text-muted">Ürün</label>
-                                        <select name="urunler[]" class="form-select" required>
-                                            <option value="">Seç...</option>
-                                            <?php
-                                            if ($urunler_list && $urunler_list->num_rows > 0) {
-                                                $urunler_list->data_seek(0);
-                                                while ($u = $urunler_list->fetch_assoc()) {
-                                                    echo "<option value='{$u['urun_adi']}'>{$u['urun_adi']}</option>";
-                                                }
-                                            }
-                                            ?>
-                                        </select>
+                                        <input type="text" name="urunler[]" class="form-control" placeholder="Örn: Özel Amaçlı Un" required>
                                     </div>
                                     <div class="col-md-3 mb-2 mb-md-0">
                                         <label class="form-label small text-muted">Miktar</label>
@@ -246,20 +255,33 @@ $urunler_list = $baglanti->query("SELECT urun_adi FROM urunler ORDER BY urun_adi
         document.addEventListener('DOMContentLoaded', function () {
             // SweetAlert2 Alerts
             <?php if (!empty($mesaj)): ?>
-                Swal.fire({
-                    toast: true,
-                    position: 'top-end',
-                    icon: 'success',
-                    title: '<?php echo addslashes(str_replace(["✅ ", "✓ "], "", strip_tags($mesaj))); ?>',
-                    showConfirmButton: false,
-                    showCloseButton: true,
-                    timer: 5000,
-                    timerProgressBar: true,
-                    didOpen: (toast) => {
-                        toast.addEventListener('mouseenter', Swal.stopTimer)
-                        toast.addEventListener('mouseleave', Swal.resumeTimer)
-                    }
-                });
+                <?php if (isset($yeni_siparis_id)): ?>
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Başarılı!',
+                        html: '<?php echo addslashes(str_replace(["✅ ", "✓ "], "", strip_tags($mesaj))); ?>' +
+                              '<br><br><a href="siparis_yazdir.php?id=<?php echo $yeni_siparis_id; ?>" target="_blank" class="btn btn-danger btn-lg mt-2"><i class="fas fa-file-pdf me-2"></i> Ön Sipariş Formunu Yazdır (PDF)</a>',
+                        showConfirmButton: true,
+                        confirmButtonText: 'Kapat',
+                        confirmButtonColor: '#6c757d',
+                        allowOutsideClick: false
+                    });
+                <?php else: ?>
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: '<?php echo addslashes(str_replace(["✅ ", "✓ "], "", strip_tags($mesaj))); ?>',
+                        showConfirmButton: false,
+                        showCloseButton: true,
+                        timer: 5000,
+                        timerProgressBar: true,
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer)
+                            toast.addEventListener('mouseleave', Swal.resumeTimer)
+                        }
+                    });
+                <?php endif; ?>
             <?php endif; ?>
 
             <?php if (!empty($hata)): ?>
