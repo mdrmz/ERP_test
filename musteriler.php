@@ -17,29 +17,46 @@ sayfaErisimKontrol($baglanti);
 $mesaj = "";
 $hata = "";
 
-// YENİ MÜŞTERİ EKLE (Siparişler sayfasındakiyle aynı mantık ama burası ana yeri olacak)
+// YENİ MÜŞTERİ / TEDARİKÇİ EKLE
 if (isset($_POST["musteri_ekle"])) {
+    $kod = $baglanti->real_escape_string($_POST["cari_kod"]);
+    $tip = (strpos($kod, '120') === 0) ? 'Müşteri' : ((strpos($kod, '320') === 0) ? 'Tedarikçi' : 'Müşteri');
     $ad = $baglanti->real_escape_string($_POST["firma_adi"]);
     $yetkili = $baglanti->real_escape_string($_POST["yetkili_kisi"]);
     $tel = $baglanti->real_escape_string($_POST["telefon"]);
+    $eposta = $baglanti->real_escape_string($_POST["eposta"]);
+    $vd = $baglanti->real_escape_string($_POST["vergi_dairesi"]);
+    $vn = $baglanti->real_escape_string($_POST["vergi_no"]);
+    $il = $baglanti->real_escape_string($_POST["il"]);
+    $ilce = $baglanti->real_escape_string($_POST["ilce"]);
     $adres = $baglanti->real_escape_string($_POST["adres"]);
+    $notlar = $baglanti->real_escape_string($_POST["ozel_notlar"]);
 
-    // Aynı isimde var mı kontrolü
-    $kontrol = $baglanti->query("SELECT id FROM musteriler WHERE firma_adi = '$ad'");
+    // Aynı kodda var mı kontrolü
+    $kontrol = $baglanti->query("SELECT id FROM musteriler WHERE cari_kod = '$kod'");
     if ($kontrol && $kontrol->num_rows > 0) {
-        $hata = "⚠️ Bu müşteri zaten sistemde kayıtlı!";
+        $hata = "⚠️ Bu cari kod ($kod) zaten sistemde kayıtlı!";
     } else {
-        $sql = "INSERT INTO musteriler (firma_adi, yetkili_kisi, telefon, adres) VALUES ('$ad', '$yetkili', '$tel', '$adres')";
+        $sql = "INSERT INTO musteriler (cari_kod, cari_tip, firma_adi, yetkili_kisi, telefon, eposta, vergi_dairesi, vergi_no, il, ilce, adres, ozel_notlar) 
+                VALUES ('$kod', '$tip', '$ad', '$yetkili', '$tel', '$eposta', '$vd', '$vn', '$il', '$ilce', '$adres', '$notlar')";
         if ($baglanti->query($sql)) {
-            $mesaj = "✅ Yeni Müşteri Eklendi: $ad";
+            $mesaj = "✅ Kayıt Başarılı: $ad ($kod)";
         } else {
             $hata = "Hata: " . $baglanti->error;
         }
     }
 }
 
+// FİLTRELEME
+$where = " WHERE 1=1 ";
+if(isset($_GET['tip']) && $_GET['tip'] == 'tedarikci') {
+    $where .= " AND cari_tip = 'Tedarikçi' ";
+} elseif(isset($_GET['tip']) && $_GET['tip'] == 'musteri') {
+    $where .= " AND cari_tip = 'Müşteri' ";
+}
+
 // LİSTELERİ ÇEK
-$musteriler = $baglanti->query("SELECT * FROM musteriler ORDER BY firma_adi ASC");
+$musteriler = $baglanti->query("SELECT * FROM musteriler $where ORDER BY firma_adi ASC");
 
 // Müşteri detayı seçildiyse:
 $secili_musteri_id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
@@ -157,7 +174,20 @@ if ($secili_musteri_id > 0) {
             <div class="col-lg-4 mb-4">
                 <div class="card shadow-sm border-0 h-100">
                     <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0">Müşteri Rehberi</h6>
+                        <div class="dropdown">
+                            <button class="btn btn-dark btn-sm dropdown-toggle fw-bold p-0" type="button" data-bs-toggle="dropdown">
+                                <?php 
+                                    if(isset($_GET['tip']) && $_GET['tip'] == 'tedarikci') echo "Tedarikçiler (320)";
+                                    elseif(isset($_GET['tip']) && $_GET['tip'] == 'musteri') echo "Müşteriler (120)";
+                                    else echo "Tüm Kayıtlar";
+                                ?>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-dark shadow">
+                                <li><a class="dropdown-menu-item dropdown-item small" href="musteriler.php">Hepsi</a></li>
+                                <li><a class="dropdown-menu-item dropdown-item small" href="musteriler.php?tip=musteri">Sadece Müşteriler (120)</a></li>
+                                <li><a class="dropdown-menu-item dropdown-item small" href="musteriler.php?tip=tedarikci">Sadece Tedarikçiler (320)</a></li>
+                            </ul>
+                        </div>
                         <span class="badge bg-light text-dark">
                             <?php echo $musteriler ? $musteriler->num_rows : 0; ?> Kayit
                         </span>
@@ -173,13 +203,19 @@ if ($secili_musteri_id > 0) {
                                 while ($m = $musteriler->fetch_assoc()) {
                                     $active = ($secili_musteri_id == $m['id']) ? 'active' : '';
                                     echo "
-                                    <a href='musteriler.php?id={$m['id']}' class='list-group-item list-group-item-action customer-card {$active}'>
+                                    <a href='musteriler.php?id={$m['id']}" . (isset($_GET['tip']) ? '&tip='.$_GET['tip'] : '') . "' class='list-group-item list-group-item-action customer-card {$active}'>
                                         <div class='d-flex w-100 justify-content-between'>
                                             <h6 class='mb-1 text-primary fw-bold'>{$m['firma_adi']}</h6>
-                                            <span class='text-muted small'>ID: M-{$m['id']}</span>
+                                            <span class='badge " . ($m['cari_tip'] == 'Müşteri' ? 'bg-info-subtle text-info' : 'bg-warning-subtle text-warning') . "' style='font-size:0.6rem;'>{$m['cari_tip']}</span>
                                         </div>
-                                        <p class='mb-1 small'><i class='fas fa-user text-muted me-1'></i> " . ($m['yetkili_kisi'] ? $m['yetkili_kisi'] : '-') . "</p>
-                                        <small class='text-muted'><i class='fas fa-phone me-1'></i> " . ($m['telefon'] ? $m['telefon'] : 'Belirtilmedi') . "</small>
+                                        <div class='d-flex justify-content-between align-items-center mb-1'>
+                                            <small class='text-muted' style='font-size:0.75rem;'><i class='fas fa-id-card me-1'></i> {$m['cari_kod']}</small>
+                                            <small class='text-muted' style='font-size:0.75rem;'><i class='fas fa-map-marker-alt me-1'></i> " . ($m['il'] ? $m['il'] : 'LOKASYON YOK') . "</small>
+                                        </div>
+                                        <div class='d-flex justify-content-between align-items-center'>
+                                            <small class='text-dark small'><i class='fas fa-user text-muted me-1'></i> " . ($m['yetkili_kisi'] ?: '-') . "</small>
+                                            <small class='text-muted small'><i class='fas fa-phone me-1'></i> " . ($m['telefon'] ?: '-') . "</small>
+                                        </div>
                                     </a>";
                                 }
                             } else {
@@ -201,16 +237,32 @@ if ($secili_musteri_id > 0) {
                                     <?php echo $secili_musteri['firma_adi']; ?>
                                 </h4>
                                 <div class="text-muted small">
-                                    <span class="me-3"><i class="fas fa-user me-1"></i>
+                                    <span class="me-3"><i class="fas fa-id-card me-1 text-muted"></i>
+                                        <strong><?php echo $secili_musteri['cari_kod']; ?></strong>
+                                    </span>
+                                    <span class="me-3"><i class="fas fa-user me-1 text-muted"></i>
                                         <?php echo $secili_musteri['yetkili_kisi'] ?: '-'; ?>
                                     </span>
-                                    <span class="me-3"><i class="fas fa-phone me-1"></i>
+                                    <span class="me-3"><i class="fas fa-phone me-1 text-muted"></i>
                                         <?php echo $secili_musteri['telefon'] ?: '-'; ?>
                                     </span>
-                                    <span><i class="fas fa-map-marker-alt me-1"></i>
-                                        <?php echo $secili_musteri['adres'] ?: '-'; ?>
+                                    <span><i class="fas fa-map-marker-alt me-1 text-muted"></i>
+                                        <?php echo $secili_musteri['ilce'] . ' / ' . $secili_musteri['il']; ?>
                                     </span>
                                 </div>
+                                <div class="mt-2 text-muted small">
+                                    <span class="me-3"><i class="fas fa-file-invoice me-1 text-muted"></i>
+                                        VD: <?php echo $secili_musteri['vergi_dairesi'] ?: '-'; ?> / No: <?php echo $secili_musteri['vergi_no'] ?: '-'; ?>
+                                    </span>
+                                    <span class="me-3"><i class="fas fa-envelope me-1 text-muted"></i>
+                                        <?php echo $secili_musteri['eposta'] ?: '-'; ?>
+                                    </span>
+                                </div>
+                                <?php if($secili_musteri['ozel_notlar']): ?>
+                                <div class="mt-2 p-2 bg-warning-subtle rounded border border-warning-subtle small">
+                                    <i class="fas fa-sticky-note text-warning me-2"></i><strong>Özel Not:</strong> <?php echo nl2br(htmlspecialchars($secili_musteri['ozel_notlar'])); ?>
+                                </div>
+                                <?php endif; ?>
                             </div>
                             <a href="pazarlama.php" class="btn btn-outline-warning btn-sm">
                                 <i class="fas fa-shopping-cart me-1"></i> Sipariş Gir
@@ -348,25 +400,59 @@ if ($secili_musteri_id > 0) {
                         <h5 class="modal-title"><i class="fas fa-user-plus me-2"></i>Yeni Müşteri Kaydı</h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Firma / Kurum Adı *</label>
-                            <input type="text" name="firma_adi" class="form-control" placeholder="Örn: Özbal A.Ş."
-                                required>
+                    <div class="modal-body bg-light">
+                        <div class="row g-2">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold small">Cari Kod *</label>
+                                <input type="text" name="cari_kod" class="form-control" placeholder="Örn: 120.01.001" required>
+                                <div class="form-text small" style="font-size:0.65rem;">120: Müşteri, 320: Tedarikçi</div>
+                            </div>
+                            <div class="col-md-8 mb-3">
+                                <label class="form-label fw-bold small">Firma / Kurum Ünvanı *</label>
+                                <input type="text" name="firma_adi" class="form-control" placeholder="Örn: Özbal Un ve Yem A.Ş." required>
+                            </div>
                         </div>
-                        <div class="row">
+                        <div class="row g-2">
                             <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Yetkili Kişi</label>
+                                <label class="form-label fw-bold small">Yetkili Kişi</label>
                                 <input type="text" name="yetkili_kisi" class="form-control" placeholder="Ad Soyad">
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Telefon</label>
+                                <label class="form-label fw-bold small">Telefon</label>
                                 <input type="text" name="telefon" class="form-control" placeholder="05XX XXX XX XX">
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Sevk / Fatura Adresi</label>
-                            <textarea name="adres" class="form-control" rows="3" placeholder="Açık Adres"></textarea>
+                            <label class="form-label fw-bold small">E-Posta</label>
+                            <input type="email" name="eposta" class="form-control" placeholder="info@firma.com">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Vergi Dairesi</label>
+                                <input type="text" name="vergi_dairesi" class="form-control">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Vergi No</label>
+                                <input type="text" name="vergi_no" class="form-control">
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">İl</label>
+                                <input type="text" name="il" class="form-control">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">İlçe</label>
+                                <input type="text" name="ilce" class="form-control">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Açık Adres</label>
+                            <textarea name="adres" class="form-control" rows="2"></textarea>
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label fw-bold small">Özel CRM Notları</label>
+                            <textarea name="ozel_notlar" class="form-control" rows="2" placeholder="Müşteriye özel un talepleri, ambalaj tercihleri vb."></textarea>
                         </div>
                     </div>
                     <div class="modal-footer">

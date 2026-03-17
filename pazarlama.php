@@ -62,7 +62,7 @@ if (isset($_POST["siparis_olustur"])) {
 }
 
 // Gerekli verileri çek (Sadece form için, listeleme detayları gizli)
-$musteriler = $baglanti->query("SELECT id, firma_adi, yetkili_kisi FROM musteriler ORDER BY firma_adi");
+$musteriler = $baglanti->query("SELECT id, firma_adi, yetkili_kisi, cari_kod FROM musteriler WHERE cari_tip = 'Müşteri' OR cari_tip IS NULL ORDER BY firma_adi");
 
 ?>
 <!DOCTYPE html>
@@ -159,7 +159,7 @@ $musteriler = $baglanti->query("SELECT id, firma_adi, yetkili_kisi FROM musteril
                                         if ($musteriler && $musteriler->num_rows > 0) {
                                             $musteriler->data_seek(0);
                                             while ($m = $musteriler->fetch_assoc()) {
-                                                echo "<option value='{$m['id']}'>{$m['firma_adi']} " . ($m['yetkili_kisi'] ? "({$m['yetkili_kisi']})" : "") . "</option>";
+                                                echo "<option value='{$m['id']}'>[{$m['cari_kod']}] {$m['firma_adi']} " . ($m['yetkili_kisi'] ? "({$m['yetkili_kisi']})" : "") . "</option>";
                                             }
                                         }
                                         ?>
