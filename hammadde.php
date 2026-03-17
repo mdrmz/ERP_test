@@ -172,7 +172,7 @@ if (isset($_POST['silo_duzeltme_talep_olustur'])) {
         if (!$detay) {
             $hata = "Kayit bulunamadi.";
         } elseif ((int) ($detay['silo_kayit_sayisi'] ?? 0) <= 0) {
-                        $hata = "Bu kayıt için silo aktarımı tamamlanmamış. Talep açılamaz.";
+            $hata = "Bu kayıt için silo aktarımı tamamlanmamış. Talep açılamaz.";
         } else {
             $acik_kontrol = $baglanti->query("SELECT id FROM silo_duzeltme_talepleri WHERE hammadde_giris_id = $giris_id AND durum IN ('bekliyor', 'onaylandi') LIMIT 1");
             if ($acik_kontrol && $acik_kontrol->num_rows > 0) {
@@ -387,7 +387,7 @@ if (isset($_POST["kantar_guncelle"])) {
         }
 
         if (empty($hata) && abs($toplam_dagitim_kg - $referans_kg) > 0.01) {
-            $hata = "Toplam dağıtım (" . number_format($toplam_dagitim_kg, 2, ',', '.') . " KG), satınalma kantar değeriyle (" . number_format($referans_kg, 2, ',', '.') . " KG) birebir aynı olmalıdır.";
+            $hata = "Toplam dağıtım (" . number_format((float)$toplam_dagitim_kg, 2, ',', '.') . " KG), satınalma kantar değeriyle (" . number_format((float)$referans_kg, 2, ',', '.') . " KG) birebir aynı olmalıdır.";
         }
     }
 
@@ -481,7 +481,7 @@ if (isset($_POST["kantar_guncelle"])) {
                 $max_kg = $bos_m3 * $yogunluk;
 
                 if (($miktar_kg - $max_kg) > 0.01) {
-                    $hata = "{$silo['silo_adi']} silosunda yeterli boşluk yok. Maksimum " . number_format($max_kg, 2, ',', '.') . " KG girebilirsiniz.";
+                    $hata = "{$silo['silo_adi']} silosunda yeterli boşluk yok. Maksimum " . number_format((float)$max_kg, 2, ',', '.') . " KG girebilirsiniz.";
                     break;
                 }
 
@@ -562,7 +562,7 @@ if (isset($_POST["kantar_guncelle"])) {
 
         if (empty($islem_hatasi)) {
             $baglanti->commit();
-            header("Location: hammadde.php?kantar=ok&kg=" . number_format($referans_kg, 0, ',', '.'));
+            header("Location: hammadde.php?kantar=ok&kg=" . number_format((float)$referans_kg, 0, ',', '.'));
             exit;
         }
 
@@ -600,8 +600,9 @@ if (isset($_POST["giris_yap"])) {
         } else {
             // HESAPLAMA: kg ve Varsayılan Yoğunluk'tan m3 bulma
             // Hektolitre değeri lab analizinden sonra girilecek, şimdilik hammadde tablosundaki varsayılan yoğunluk kullanılıyor
-            $yogunluk_kg_m3 = !empty($urun_bilgi["yogunluk_kg_m3"]) ? (float)$urun_bilgi["yogunluk_kg_m3"] : 780; 
-            if ($yogunluk_kg_m3 <= 0) $yogunluk_kg_m3 = 780; // Sıfıra bölünme hatasını (Division by zero) engellemek için
+            $yogunluk_kg_m3 = !empty($urun_bilgi["yogunluk_kg_m3"]) ? (float) $urun_bilgi["yogunluk_kg_m3"] : 780;
+            if ($yogunluk_kg_m3 <= 0)
+                $yogunluk_kg_m3 = 780; // Sıfıra bölünme hatasını (Division by zero) engellemek için
             $girilen_m3 = ($kg > 0) ? ($kg / $yogunluk_kg_m3) : 0;
 
             // 4. KAYIT (Silo bilgisi daha sonra kantar/planlama aşamasında girilecek)
@@ -634,7 +635,7 @@ if (isset($_POST["giris_yap"])) {
                                 $baglanti,
                                 'arac_geldi',
                                 "Yeni Araç Geldi: $plaka",
-                                "Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format($kg, 0, ',', '.') . " kg",
+                                "Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format((float)$kg, 0, ',', '.') . " kg",
                                 $lab_rol_id,
                                 null,
                                 'hammadde_girisleri',
@@ -647,7 +648,7 @@ if (isset($_POST["giris_yap"])) {
                                 $baglanti,
                                 'arac_geldi',
                                 "Yeni Araç Geldi: $plaka",
-                                "Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format($kg, 0, ',', '.') . " kg",
+                                "Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format((float)$kg, 0, ',', '.') . " kg",
                                 1, // Patron rol_id
                                 null,
                                 'hammadde_girisleri',
@@ -663,11 +664,11 @@ if (isset($_POST["giris_yap"])) {
                         $baglanti,
                         'INSERT',
                         'Hammadde Kabul',
-                        "Yeni araç girişi: $plaka | Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format($kg, 0, ',', '.') . " kg"
+                        "Yeni araç girişi: $plaka | Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format((float)$kg, 0, ',', '.') . " kg"
                     );
 
                     // Redirect to prevent double submission
-                    header("Location: hammadde.php?giris=ok&plaka=" . urlencode($plaka) . "&m3=" . number_format($girilen_m3, 2));
+                    header("Location: hammadde.php?giris=ok&plaka=" . urlencode($plaka) . "&m3=" . number_format((float)$girilen_m3, 2));
                     exit;
                 } else {
                     $hata = "Kayıt hatası: " . $baglanti->error;
@@ -698,7 +699,7 @@ if ($silolar) {
         $kapasite_m3 = (float) ($s['kapasite_m3'] ?? 0);
         $doluluk_m3 = (float) ($s['doluluk_m3'] ?? 0);
         $bos_m3 = max(0, $kapasite_m3 - $doluluk_m3);
-        $bos_m3_text = number_format($bos_m3, 2, ',', '.');
+        $bos_m3_text = number_format((float)$bos_m3, 2, ',', '.');
         $izinli_attr = htmlspecialchars((string) ($s['izin_verilen_hammadde_kodlari'] ?? ''), ENT_QUOTES, 'UTF-8');
         $disabled = $bos_m3 <= 0 ? "disabled" : "";
         $base_label = $silo_adi;
@@ -1141,7 +1142,8 @@ if ($duzeltme_tablo_var) {
                                         <i class="fas fa-info-circle me-2"></i>
                                         <small>
                                             <strong>*</strong> işaretli alanlar zorunludur.<br>
-                                            Net ağırlık (kantar) işlemi Lab Analizi ve Satınalma Onayı adımlarından sonra kantar penceresinden yapılacaktır.
+                                            Net ağırlık (kantar) işlemi Lab Analizi ve Satınalma Onayı adımlarından
+                                            sonra kantar penceresinden yapılacaktır.
                                         </small>
                                     </div>
                                 </div>
@@ -1174,232 +1176,230 @@ if ($duzeltme_tablo_var) {
                 </div>
 
                 <?php if ($aktif_tab !== 'duzeltme_talepleri'): ?>
-                <div class="card shadow-sm mb-3">
-                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Kayıtları Filtrele</h5>
-                        <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="collapse"
-                            data-bs-target="#filterCollapse"
-                            aria-expanded="<?php echo (!empty($_GET) ? 'true' : 'false'); ?>"
-                            aria-controls="filterCollapse">
-                            <i class="fas fa-chevron-down"></i>
-                        </button>
-                    </div>
-                    <div class="collapse <?php echo (!empty($_GET['f_baslangic']) || !empty($_GET['f_hammadde']) || !empty($_GET['f_plaka']) || !empty($_GET['f_tedarikci']) ? 'show' : ''); ?>"
-                        id="filterCollapse">
-                        <div class="card-body bg-light border-bottom">
-                            <form method="GET" action="hammadde.php" class="row g-3">
-                                <input type="hidden" name="tab" value="<?php echo htmlspecialchars($aktif_tab); ?>">
-                                <div class="col-md-3">
-                                    <label class="form-label text-muted small fw-bold">Başlangıç Tarihi</label>
-                                    <input type="date" name="f_baslangic" class="form-control form-control-sm"
-                                        value="<?php echo htmlspecialchars($filtre_baslangic); ?>">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label text-muted small fw-bold">Bitiş Tarihi</label>
-                                    <input type="date" name="f_bitis" class="form-control form-control-sm"
-                                        value="<?php echo htmlspecialchars($filtre_bitis); ?>">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label text-muted small fw-bold">Plaka</label>
-                                    <input type="text" name="f_plaka" class="form-control form-control-sm"
-                                        placeholder="Arama..." value="<?php echo htmlspecialchars($filtre_plaka); ?>">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label text-muted small fw-bold">Tedarikçi</label>
-                                    <input type="text" name="f_tedarikci" class="form-control form-control-sm"
-                                        placeholder="Arama..."
-                                        value="<?php echo htmlspecialchars($filtre_tedarikci); ?>">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label text-muted small fw-bold">Hammadde</label>
-                                    <select name="f_hammadde" class="form-select form-select-sm">
-                                        <option value="">Tümü</option>
-                                        <?php echo $hammadde_options; ?>
-                                    </select>
-                                </div>
-                                <div class="col-12 mt-3 text-end">
-                                    <a href="hammadde.php" class="btn btn-sm btn-secondary me-2"><i
-                                            class="fas fa-times me-1"></i>Temizle</a>
-                                    <button type="submit" class="btn btn-sm btn-primary"><i
-                                            class="fas fa-search me-1"></i>Filtrele</button>
-                                </div>
-                            </form>
+                    <div class="card shadow-sm mb-3">
+                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Kayıtları Filtrele</h5>
+                            <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="collapse"
+                                data-bs-target="#filterCollapse"
+                                aria-expanded="<?php echo (!empty($_GET) ? 'true' : 'false'); ?>"
+                                aria-controls="filterCollapse">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
+                        <div class="collapse <?php echo (!empty($_GET['f_baslangic']) || !empty($_GET['f_hammadde']) || !empty($_GET['f_plaka']) || !empty($_GET['f_tedarikci']) ? 'show' : ''); ?>"
+                            id="filterCollapse">
+                            <div class="card-body bg-light border-bottom">
+                                <form method="GET" action="hammadde.php" class="row g-3">
+                                    <input type="hidden" name="tab" value="<?php echo htmlspecialchars($aktif_tab); ?>">
+                                    <div class="col-md-3">
+                                        <label class="form-label text-muted small fw-bold">Başlangıç Tarihi</label>
+                                        <input type="date" name="f_baslangic" class="form-control form-control-sm"
+                                            value="<?php echo htmlspecialchars($filtre_baslangic); ?>">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label text-muted small fw-bold">Bitiş Tarihi</label>
+                                        <input type="date" name="f_bitis" class="form-control form-control-sm"
+                                            value="<?php echo htmlspecialchars($filtre_bitis); ?>">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label text-muted small fw-bold">Plaka</label>
+                                        <input type="text" name="f_plaka" class="form-control form-control-sm"
+                                            placeholder="Arama..." value="<?php echo htmlspecialchars($filtre_plaka); ?>">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label text-muted small fw-bold">Tedarikçi</label>
+                                        <input type="text" name="f_tedarikci" class="form-control form-control-sm"
+                                            placeholder="Arama..."
+                                            value="<?php echo htmlspecialchars($filtre_tedarikci); ?>">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label text-muted small fw-bold">Hammadde</label>
+                                        <select name="f_hammadde" class="form-select form-select-sm">
+                                            <option value="">Tümü</option>
+                                            <?php echo $hammadde_options; ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-12 mt-3 text-end">
+                                        <a href="hammadde.php" class="btn btn-sm btn-secondary me-2"><i
+                                                class="fas fa-times me-1"></i>Temizle</a>
+                                        <button type="submit" class="btn btn-sm btn-primary"><i
+                                                class="fas fa-search me-1"></i>Filtrele</button>
+                                    </div>
+                                </form>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="card shadow-sm">
-                    <div class="card-header bg-dark text-white">
-                        <h5 class="mb-0"><i class="fas fa-history me-2"></i>Son Hammadde Girişleri (İzlenebilirlik)</h5>
-                    </div>
-                    <div class="table-responsive p-3">
-                        <table id="gecmisTablo" class="table table-hover mb-0 table-striped align-middle">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>Tarih</th>
-                                    <th>Plaka</th>
-                                    <th>Tedarikçi</th>
-                                    <th>Ürün</th>
-                                    <th>Silo</th>
-                                    <th>Miktar (KG / M³)</th>
-                                    <th>Analiz Değerleri</th>
-                                    <th class="text-center">İşlem</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if ($gecmis && $gecmis->num_rows > 0) {
-                                    while ($row = $gecmis->fetch_assoc()) { ?>
-                                        <tr>
-                                            <td data-order="<?php echo $row["tarih"]; ?>">
-                                                <small><?php echo date("d.m.Y H:i", strtotime($row["tarih"])); ?></small>
-                                            </td>
-                                            <td><span class="badge bg-secondary"><?php echo $row["arac_plaka"]; ?></span></td>
-                                            <td><small><?php echo htmlspecialchars($row["tedarikci"] ?? '-'); ?></small></td>
-                                            <td>
-                                                <?php $durum_bilgi = hammaddeIzlenebilirlikDurum($row); ?>
-                                                <strong class="text-primary"><?php echo $row["urun_adi"]; ?></strong>
-                                                <?php if (!empty($row["parti_no"])) { ?>
-                                                    <div class="small text-muted"><i
-                                                            class="fas fa-barcode me-1"></i><?php echo $row["parti_no"]; ?></div>
-                                                <?php } ?>
-                                                <div class="mt-1">
-                                                    <span class="badge <?php echo $durum_bilgi['badge_class']; ?>">
-                                                        <i class="fas <?php echo $durum_bilgi['icon']; ?> me-1"></i><?php echo $durum_bilgi['etiket']; ?>
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td><span
-                                                    class="badge bg-light text-dark border"><?php echo $row["silo_adi"] ?: '-'; ?></span>
-                                            </td>
-                                            <td>
-                                                <div class="fw-bold">
-                                                    <?php echo number_format($row["miktar_kg"], 0, ',', '.'); ?> kg
-                                                </div>
-                                                <div class="small text-muted">
-                                                    <?php echo number_format($row["hesaplanan_m3"], 2); ?> m³
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div class="d-flex flex-wrap gap-1 analysis-badges">
-                                                    <?php
-                                                    // Determine if lab analysis exists
-                                                    $has_lab = isset($row["lab_hektolitre"]) || isset($row["lab_nem"]) || isset($row["lab_protein"]);
-
-                                                    if ($has_lab) { ?>
-                                                        <span class="badge badge-soft badge-soft-hl" title="Hektolitre">HL:
-                                                            <?php echo $row["lab_hektolitre"] ?: '-'; ?></span>
-                                                        <span class="badge badge-soft badge-soft-nem" title="Nem">N:
-                                                            <?php echo $row["lab_nem"] ?: '-'; ?> %</span>
-                                                        <span class="badge badge-soft badge-soft-prot" title="Protein">P:
-                                                            <?php echo $row["lab_protein"] ?: '-'; ?> %</span>
-                                                        <span class="badge badge-soft badge-soft-nis" title="Nişasta">Niş:
-                                                            <?php echo $row["lab_nisasta"] ?: '-'; ?> %</span>
-                                                        <span class="badge badge-soft badge-soft-sert" title="Sertlik">S:
-                                                            <?php echo $row["lab_sertlik"] ?: '-'; ?></span>
-                                                    <?php } else { ?>
-                                                        <a href="lab_analizleri.php"
-                                                            class="text-decoration-none small text-warning"><i
-                                                                class="fas fa-exclamation-circle me-1"></i>Analiz Bekliyor</a>
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-dark text-white">
+                            <h5 class="mb-0"><i class="fas fa-history me-2"></i>Son Hammadde Girişleri (İzlenebilirlik)</h5>
+                        </div>
+                        <div class="table-responsive p-3">
+                            <table id="gecmisTablo" class="table table-hover mb-0 table-striped align-middle">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Tarih</th>
+                                        <th>Plaka</th>
+                                        <th>Tedarikçi</th>
+                                        <th>Ürün</th>
+                                        <th>Silo</th>
+                                        <th>Miktar (KG / M³)</th>
+                                        <th>Analiz Değerleri</th>
+                                        <th class="text-center">İşlem</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if ($gecmis && $gecmis->num_rows > 0) {
+                                        while ($row = $gecmis->fetch_assoc()) { ?>
+                                            <tr>
+                                                <td data-order="<?php echo $row["tarih"]; ?>">
+                                                    <small><?php echo date("d.m.Y H:i", strtotime($row["tarih"])); ?></small>
+                                                </td>
+                                                <td><span class="badge bg-secondary"><?php echo $row["arac_plaka"]; ?></span></td>
+                                                <td><small><?php echo htmlspecialchars($row["tedarikci"] ?? '-'); ?></small></td>
+                                                <td>
+                                                    <?php $durum_bilgi = hammaddeIzlenebilirlikDurum($row); ?>
+                                                    <strong class="text-primary"><?php echo $row["urun_adi"]; ?></strong>
+                                                    <?php if (!empty($row["parti_no"])) { ?>
+                                                        <div class="small text-muted"><i
+                                                                class="fas fa-barcode me-1"></i><?php echo $row["parti_no"]; ?></div>
                                                     <?php } ?>
-                                                </div>
-                                            </td>
-                                            <td class="text-center">
-                                                <?php
-                                                $can_transfer = (bool) ($durum_bilgi['can_transfer'] ?? false);
-                                                $is_locked = (bool) ($durum_bilgi['is_locked'] ?? false);
-                                                $durum_kodu = (string) ($durum_bilgi['kod'] ?? '');
-                                                $onayli_talep_ile_duzeltme = ($is_locked && !$is_patron && ((int) ($row['duzeltme_onayli_talep_id'] ?? 0) > 0));
-                                                $patron_direkt_duzeltme = ($is_locked && $is_patron);
-                                                $modal_aksiyon_aktif = ($can_transfer || $patron_direkt_duzeltme || $onayli_talep_ile_duzeltme);
+                                                    <div class="mt-1">
+                                                        <span class="badge <?php echo $durum_bilgi['badge_class']; ?>">
+                                                            <i
+                                                                class="fas <?php echo $durum_bilgi['icon']; ?> me-1"></i><?php echo $durum_bilgi['etiket']; ?>
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td><span
+                                                        class="badge bg-light text-dark border"><?php echo $row["silo_adi"] ?: '-'; ?></span>
+                                                </td>
+                                                <td>
+                                                    <div class="fw-bold">
+                                                        <?php echo number_format((float)$row["miktar_kg"], 0, ',', '.'); ?> kg
+                                                    </div>
+                                                    <div class="small text-muted">
+                                                        <?php echo number_format((float)$row["hesaplanan_m3"], 2); ?> m³
+                                                    </div>
 
-                                                if ($can_transfer) {
-                                                    $buton_sinifi = 'btn-warning';
-                                                    $buton_title = 'Silo Aktarma';
-                                                    $buton_icon = 'fa-right-left';
-                                                    $buton_metin = 'Aktar';
-                                                } elseif ($onayli_talep_ile_duzeltme) {
-                                                    $buton_sinifi = 'btn-outline-warning';
-                                                    $buton_title = 'Onaylı Düzeltme';
-                                                    $buton_icon = 'fa-screwdriver-wrench';
-                                                    $buton_metin = 'Düzelt';
-                                                } elseif ($patron_direkt_duzeltme) {
-                                                    $buton_sinifi = 'btn-outline-primary';
-                                                    $buton_title = 'Patron Düzeltmesi';
-                                                    $buton_icon = 'fa-pen-to-square';
-                                                    $buton_metin = 'Düzelt';
-                                                } elseif ($is_locked) {
-                                                    $buton_sinifi = 'btn-secondary disabled';
-                                                    $buton_title = 'Silo aktarimi tamamlandi, kayit kilitli.';
-                                                    $buton_icon = 'fa-lock';
-                                                    $buton_metin = '';
-                                                } elseif ($durum_kodu === 'reddedildi') {
-                                                    $buton_sinifi = 'btn-secondary disabled';
-                                                    $buton_title = 'Reddedilen kayitta silo aktarimi yok.';
-                                                    $buton_icon = 'fa-ban';
-                                                    $buton_metin = '';
-                                                } else {
-                                                    $buton_sinifi = 'btn-secondary disabled';
-                                                    $buton_title = 'Silo Aktarma Bekleniyor durumuna gelmesi gerekiyor.';
-                                                    $buton_icon = 'fa-clock';
-                                                    $buton_metin = '';
-                                                }
-                                                ?>
-                                                <div class="d-flex justify-content-center gap-1">
-                                                    <button type="button"
-                                                        class="btn btn-sm <?php echo $buton_sinifi; ?>"
-                                                        <?php echo $modal_aksiyon_aktif ? 'data-bs-toggle="modal" data-bs-target="#kantarModal"' : ''; ?>
-                                                        data-id="<?php echo $row['id']; ?>"
-                                                        data-plaka="<?php echo htmlspecialchars($row['arac_plaka']); ?>"
-                                                        data-tedarikci="<?php echo htmlspecialchars($row['tedarikci'] ?? ''); ?>"
-                                                        data-referans-kg="<?php echo (float) ($row['referans_kantar_kg'] ?? 0); ?>"
-                                                        data-hammadde-kodu="<?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
-                                                        data-yogunluk="<?php echo (float) ($row['hammadde_yogunluk'] ?? 780); ?>"
-                                                        data-patron-duzeltme="<?php echo $patron_direkt_duzeltme ? '1' : '0'; ?>"
-                                                        title="<?php echo $buton_title; ?>">
-                                                        <i class="fas <?php echo $buton_icon; ?>"></i>
-                                                        <?php if ($buton_metin !== ''): ?>
-                                                            <small class="ms-1"><?php echo $buton_metin; ?></small>
-                                                        <?php endif; ?>
-                                                    </button>
+                                                </td>
+                                                <td>
+                                                    <div class="d-flex flex-wrap gap-1 analysis-badges">
+                                                        <?php
+                                                        // Determine if lab analysis exists
+                                                        $has_lab = isset($row["lab_hektolitre"]) || isset($row["lab_nem"]) || isset($row["lab_protein"]);
 
-                                                    <?php if ($is_locked && !$is_patron && !$onayli_talep_ile_duzeltme && $duzeltme_tablo_var): ?>
-                                                        <button type="button"
-                                                            class="btn btn-sm btn-outline-danger"
-                                                            data-bs-toggle="modal"
-                                                            data-bs-target="#duzeltmeTalepModal"
-                                                            data-giris-id="<?php echo (int) $row['id']; ?>"
-                                                            data-parti-no="<?php echo htmlspecialchars($row['parti_no'] ?? '', ENT_QUOTES); ?>"
-                                                            data-plaka="<?php echo htmlspecialchars($row['arac_plaka'] ?? '', ENT_QUOTES); ?>"
+                                                        if ($has_lab) { ?>
+                                                            <span class="badge badge-soft badge-soft-hl" title="Hektolitre">HL:
+                                                                <?php echo $row["lab_hektolitre"] ?: '-'; ?></span>
+                                                            <span class="badge badge-soft badge-soft-nem" title="Nem">N:
+                                                                <?php echo $row["lab_nem"] ?: '-'; ?> %</span>
+                                                            <span class="badge badge-soft badge-soft-prot" title="Protein">P:
+                                                                <?php echo $row["lab_protein"] ?: '-'; ?> %</span>
+                                                            <span class="badge badge-soft badge-soft-nis" title="Nişasta">Niş:
+                                                                <?php echo $row["lab_nisasta"] ?: '-'; ?> %</span>
+                                                            <span class="badge badge-soft badge-soft-sert" title="Sertlik">S:
+                                                                <?php echo $row["lab_sertlik"] ?: '-'; ?></span>
+                                                        <?php } else { ?>
+                                                            <a href="lab_analizleri.php"
+                                                                class="text-decoration-none small text-warning"><i
+                                                                    class="fas fa-exclamation-circle me-1"></i>Analiz Bekliyor</a>
+                                                        <?php } ?>
+                                                    </div>
+                                                </td>
+                                                <td class="text-center">
+                                                    <?php
+                                                    $can_transfer = (bool) ($durum_bilgi['can_transfer'] ?? false);
+                                                    $is_locked = (bool) ($durum_bilgi['is_locked'] ?? false);
+                                                    $durum_kodu = (string) ($durum_bilgi['kod'] ?? '');
+                                                    $onayli_talep_ile_duzeltme = ($is_locked && !$is_patron && ((int) ($row['duzeltme_onayli_talep_id'] ?? 0) > 0));
+                                                    $patron_direkt_duzeltme = ($is_locked && $is_patron);
+                                                    $modal_aksiyon_aktif = ($can_transfer || $patron_direkt_duzeltme || $onayli_talep_ile_duzeltme);
+
+                                                    if ($can_transfer) {
+                                                        $buton_sinifi = 'btn-warning';
+                                                        $buton_title = 'Silo Aktarma';
+                                                        $buton_icon = 'fa-right-left';
+                                                        $buton_metin = 'Aktar';
+                                                    } elseif ($onayli_talep_ile_duzeltme) {
+                                                        $buton_sinifi = 'btn-outline-warning';
+                                                        $buton_title = 'Onaylı Düzeltme';
+                                                        $buton_icon = 'fa-screwdriver-wrench';
+                                                        $buton_metin = 'Düzelt';
+                                                    } elseif ($patron_direkt_duzeltme) {
+                                                        $buton_sinifi = 'btn-outline-primary';
+                                                        $buton_title = 'Patron Düzeltmesi';
+                                                        $buton_icon = 'fa-pen-to-square';
+                                                        $buton_metin = 'Düzelt';
+                                                    } elseif ($is_locked) {
+                                                        $buton_sinifi = 'btn-secondary disabled';
+                                                        $buton_title = 'Silo aktarimi tamamlandi, kayit kilitli.';
+                                                        $buton_icon = 'fa-lock';
+                                                        $buton_metin = '';
+                                                    } elseif ($durum_kodu === 'reddedildi') {
+                                                        $buton_sinifi = 'btn-secondary disabled';
+                                                        $buton_title = 'Reddedilen kayitta silo aktarimi yok.';
+                                                        $buton_icon = 'fa-ban';
+                                                        $buton_metin = '';
+                                                    } else {
+                                                        $buton_sinifi = 'btn-secondary disabled';
+                                                        $buton_title = 'Silo Aktarma Bekleniyor durumuna gelmesi gerekiyor.';
+                                                        $buton_icon = 'fa-clock';
+                                                        $buton_metin = '';
+                                                    }
+                                                    ?>
+                                                    <div class="d-flex justify-content-center gap-1">
+                                                        <button type="button" class="btn btn-sm <?php echo $buton_sinifi; ?>" <?php echo $modal_aksiyon_aktif ? 'data-bs-toggle="modal" data-bs-target="#kantarModal"' : ''; ?>
+                                                            data-id="<?php echo $row['id']; ?>"
+                                                            data-plaka="<?php echo htmlspecialchars($row['arac_plaka']); ?>"
+                                                            data-tedarikci="<?php echo htmlspecialchars($row['tedarikci'] ?? ''); ?>"
+                                                            data-referans-kg="<?php echo (float) ($row['referans_kantar_kg'] ?? 0); ?>"
                                                             data-hammadde-kodu="<?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
-                                                            title="Silo düzeltme talebi aç">
-                                                            <i class="fas fa-flag"></i>
+                                                            data-yogunluk="<?php echo (float) ($row['hammadde_yogunluk'] ?? 780); ?>"
+                                                            data-patron-duzeltme="<?php echo $patron_direkt_duzeltme ? '1' : '0'; ?>"
+                                                            title="<?php echo $buton_title; ?>">
+                                                            <i class="fas <?php echo $buton_icon; ?>"></i>
+                                                            <?php if ($buton_metin !== ''): ?>
+                                                                <small class="ms-1"><?php echo $buton_metin; ?></small>
+                                                            <?php endif; ?>
                                                         </button>
-                                                    <?php elseif ($is_locked && !$is_patron && !$duzeltme_tablo_var): ?>
-                                                        <button type="button"
-                                                            class="btn btn-sm btn-outline-secondary"
-                                                            onclick="Swal.fire({icon:'info',title:'Düzeltme talebi pasif',text:'Önce veritabanında silo_duzeltme_talepleri tablosunu oluşturmanız gerekiyor.'});"
-                                                            title="Düzeltme talebi için SQL güncellemesi gerekli">
-                                                            <i class="fas fa-flag"></i>
-                                                        </button>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    <?php }
-                                } else {
-                                    echo "<tr><td colspan='8' class='text-center p-4'>Henüz hammadde girişi bulunmuyor.</td></tr>";
-                                } ?>
-                            </tbody>
-                        </table>
+
+                                                        <?php if ($is_locked && !$is_patron && !$onayli_talep_ile_duzeltme && $duzeltme_tablo_var): ?>
+                                                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                                                data-bs-toggle="modal" data-bs-target="#duzeltmeTalepModal"
+                                                                data-giris-id="<?php echo (int) $row['id']; ?>"
+                                                                data-parti-no="<?php echo htmlspecialchars($row['parti_no'] ?? '', ENT_QUOTES); ?>"
+                                                                data-plaka="<?php echo htmlspecialchars($row['arac_plaka'] ?? '', ENT_QUOTES); ?>"
+                                                                data-hammadde-kodu="<?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
+                                                                title="Silo düzeltme talebi aç">
+                                                                <i class="fas fa-flag"></i>
+                                                            </button>
+                                                        <?php elseif ($is_locked && !$is_patron && !$duzeltme_tablo_var): ?>
+                                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                                onclick="Swal.fire({icon:'info',title:'Düzeltme talebi pasif',text:'Önce veritabanında silo_duzeltme_talepleri tablosunu oluşturmanız gerekiyor.'});"
+                                                                title="Düzeltme talebi için SQL güncellemesi gerekli">
+                                                                <i class="fas fa-flag"></i>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php }
+                                    } else {
+                                        echo "<tr><td colspan='8' class='text-center p-4'>Henüz hammadde girişi bulunmuyor.</td></tr>";
+                                    } ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
                 <?php endif; ?>
 
                 <?php if ($duzeltme_tablo_var && $aktif_tab === 'duzeltme_talepleri'): ?>
                     <div class="card shadow-sm mt-3" id="duzeltme_talepleri_kart">
                         <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
                             <h5 class="mb-0"><i class="fas fa-rotate-left me-2"></i>Silo Düzeltme Talepleri</h5>
-                            <span class="badge bg-dark"><?php echo (int) $duzeltme_talepleri_bekleyen_adet; ?> Bekleyen</span>
+                            <span class="badge bg-dark"><?php echo (int) $duzeltme_talepleri_bekleyen_adet; ?>
+                                Bekleyen</span>
                         </div>
                         <div class="table-responsive p-3">
                             <table class="table table-sm table-striped align-middle mb-0">
@@ -1429,38 +1429,53 @@ if ($duzeltme_tablo_var) {
                                                 $talep_badge = 'bg-success';
                                             ?>
                                             <tr>
-                                                <td><small><?php echo date("d.m.Y H:i", strtotime((string) ($talep['created_at'] ?? 'now'))); ?></small></td>
+                                                <td><small><?php echo date("d.m.Y H:i", strtotime((string) ($talep['created_at'] ?? 'now'))); ?></small>
+                                                </td>
                                                 <td>
-                                                    <div><strong><?php echo htmlspecialchars((string) ($talep['parti_no'] ?? '-')); ?></strong></div>
+                                                    <div>
+                                                        <strong><?php echo htmlspecialchars((string) ($talep['parti_no'] ?? '-')); ?></strong>
+                                                    </div>
                                                     <div class="small text-muted">
                                                         <?php echo htmlspecialchars((string) ($talep['hammadde_kodu'] ?? '-')); ?> /
                                                         <?php echo htmlspecialchars((string) ($talep['arac_plaka'] ?? '-')); ?>
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <div><?php echo htmlspecialchars((string) ($talep['talep_eden_kadi'] ?? '-')); ?></div>
+                                                    <div>
+                                                        <?php echo htmlspecialchars((string) ($talep['talep_eden_kadi'] ?? '-')); ?>
+                                                    </div>
                                                     <?php if (!empty($talep['karar_veren_kadi'])): ?>
-                                                        <div class="small text-muted">Karar: <?php echo htmlspecialchars((string) $talep['karar_veren_kadi']); ?></div>
+                                                        <div class="small text-muted">Karar:
+                                                            <?php echo htmlspecialchars((string) $talep['karar_veren_kadi']); ?></div>
                                                     <?php endif; ?>
                                                 </td>
                                                 <td style="min-width:260px;">
-                                                    <div class="small"><?php echo nl2br(htmlspecialchars((string) ($talep['talep_nedeni'] ?? ''))); ?></div>
+                                                    <div class="small">
+                                                        <?php echo nl2br(htmlspecialchars((string) ($talep['talep_nedeni'] ?? ''))); ?>
+                                                    </div>
                                                     <?php if (!empty($talep['karar_notu'])): ?>
-                                                        <div class="small text-muted mt-1"><strong>Not:</strong> <?php echo nl2br(htmlspecialchars((string) $talep['karar_notu'])); ?></div>
+                                                        <div class="small text-muted mt-1"><strong>Not:</strong>
+                                                            <?php echo nl2br(htmlspecialchars((string) $talep['karar_notu'])); ?></div>
                                                     <?php endif; ?>
                                                 </td>
-                                                <td><span class="badge <?php echo $talep_badge; ?>"><?php echo htmlspecialchars(ucfirst($talep_durum)); ?></span></td>
+                                                <td><span
+                                                        class="badge <?php echo $talep_badge; ?>"><?php echo htmlspecialchars(ucfirst($talep_durum)); ?></span>
+                                                </td>
                                                 <td style="min-width:240px;">
                                                     <?php if ($is_patron && $talep_durum === 'bekliyor'): ?>
                                                         <form method="post" class="d-flex flex-column gap-1">
-                                                            <input type="hidden" name="talep_id" value="<?php echo (int) $talep['id']; ?>">
-                                                            <input type="text" name="karar_notu" class="form-control form-control-sm" placeholder="Karar notu (opsiyonel)">
+                                                            <input type="hidden" name="talep_id"
+                                                                value="<?php echo (int) $talep['id']; ?>">
+                                                            <input type="text" name="karar_notu" class="form-control form-control-sm"
+                                                                placeholder="Karar notu (opsiyonel)">
                                                             <div class="d-flex gap-1">
-                                                                <button type="submit" name="silo_duzeltme_talep_karar" value="1" class="btn btn-sm btn-success w-100"
+                                                                <button type="submit" name="silo_duzeltme_talep_karar" value="1"
+                                                                    class="btn btn-sm btn-success w-100"
                                                                     onclick="this.form.karar.value='onayla';">
                                                                     <i class="fas fa-check me-1"></i>Onayla
                                                                 </button>
-                                                                <button type="submit" name="silo_duzeltme_talep_karar" value="1" class="btn btn-sm btn-danger w-100"
+                                                                <button type="submit" name="silo_duzeltme_talep_karar" value="1"
+                                                                    class="btn btn-sm btn-danger w-100"
                                                                     onclick="this.form.karar.value='reddet';">
                                                                     <i class="fas fa-times me-1"></i>Reddet
                                                                 </button>
@@ -1468,7 +1483,8 @@ if ($duzeltme_tablo_var) {
                                                             <input type="hidden" name="karar" value="onayla">
                                                         </form>
                                                     <?php elseif ($talep_durum === 'onaylandi'): ?>
-                                                        <span class="text-muted small">Onaylandı. Düzeltme, İzlenebilirlik ekranından yapılır.</span>
+                                                        <span class="text-muted small">Onaylandı. Düzeltme, İzlenebilirlik ekranından
+                                                            yapılır.</span>
                                                     <?php else: ?>
                                                         <span class="text-muted small">İşlem yok</span>
                                                     <?php endif; ?>
@@ -1477,7 +1493,8 @@ if ($duzeltme_tablo_var) {
                                         <?php endwhile; ?>
                                     <?php else: ?>
                                         <tr>
-                                            <td colspan="6" class="text-center text-muted py-3">Gosterilecek duzeltme talebi bulunmuyor.</td>
+                                            <td colspan="6" class="text-center text-muted py-3">Gosterilecek duzeltme talebi
+                                                bulunmuyor.</td>
                                         </tr>
                                     <?php endif; ?>
                                 </tbody>
@@ -1494,12 +1511,14 @@ if ($duzeltme_tablo_var) {
         <div class="modal-dialog">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header text-white" style="background:#8b5cf6;">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-random me-2"></i>Silo Aktarım ve Dağılım İşlemi</h5>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-random me-2"></i>Silo Aktarım ve Dağılım İşlemi
+                    </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="alert alert-info py-2 small">
-                        <i class="fas fa-info-circle me-1"></i> Satınalma tarafından onaylanan kantar ağırlığı aşağıdaki gibidir. Lütfen malzemenin döküleceği siloyu seçiniz.
+                        <i class="fas fa-info-circle me-1"></i> Satınalma tarafından onaylanan kantar ağırlığı aşağıdaki
+                        gibidir. Lütfen malzemenin döküleceği siloyu seçiniz.
                     </div>
                     <form method="post" id="kantarDagitimForm">
                         <input type="hidden" name="giris_id" id="modal_giris_id">
@@ -1518,15 +1537,18 @@ if ($duzeltme_tablo_var) {
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small text-muted mb-1">Hammadde Kodu</label>
-                                <input type="text" id="modal_hammadde_kodu" class="form-control form-control-sm" readonly>
+                                <input type="text" id="modal_hammadde_kodu" class="form-control form-control-sm"
+                                    readonly>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small text-muted mb-1">Referans Kantar (KG)</label>
-                                <input type="text" id="modal_referans_kg" class="form-control form-control-sm fw-bold text-primary" readonly>
+                                <input type="text" id="modal_referans_kg"
+                                    class="form-control form-control-sm fw-bold text-primary" readonly>
                             </div>
                         </div>
 
-                        <p class="small text-muted mb-2">Toplam silo dağıtımı referans kantar değeriyle birebir aynı olmalıdır.</p>
+                        <p class="small text-muted mb-2">Toplam silo dağıtımı referans kantar değeriyle birebir aynı
+                            olmalıdır.</p>
 
                         <div id="silo_dagitim_alani">
                             <div class="row g-2 mb-2 silo-satir">
@@ -1538,8 +1560,8 @@ if ($duzeltme_tablo_var) {
                                 </div>
                                 <div class="col-md-5">
                                     <div class="input-group">
-                                        <input type="number" name="dagitim_kg[]" class="form-control dagitim-kg-input" step="0.01" min="0"
-                                            placeholder="Miktar">
+                                        <input type="number" name="dagitim_kg[]" class="form-control dagitim-kg-input"
+                                            step="0.01" min="0" placeholder="Miktar">
                                         <span class="input-group-text">KG</span>
                                     </div>
                                 </div>
@@ -1928,6 +1950,5 @@ if ($duzeltme_tablo_var) {
 
     <?php echo yazmaYetkisiKontrolJS($baglanti); ?>
 </body>
+
 </html>
-
-
