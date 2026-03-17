@@ -387,7 +387,7 @@ if (isset($_POST["kantar_guncelle"])) {
         }
 
         if (empty($hata) && abs($toplam_dagitim_kg - $referans_kg) > 0.01) {
-            $hata = "Toplam dağıtım (" . number_format((float)$toplam_dagitim_kg, 2, ',', '.') . " KG), satınalma kantar değeriyle (" . number_format((float)$referans_kg, 2, ',', '.') . " KG) birebir aynı olmalıdır.";
+            $hata = "Toplam dağıtım (" . number_format($toplam_dagitim_kg, 2, ',', '.') . " KG), satınalma kantar değeriyle (" . number_format($referans_kg, 2, ',', '.') . " KG) birebir aynı olmalıdır.";
         }
     }
 
@@ -481,7 +481,7 @@ if (isset($_POST["kantar_guncelle"])) {
                 $max_kg = $bos_m3 * $yogunluk;
 
                 if (($miktar_kg - $max_kg) > 0.01) {
-                    $hata = "{$silo['silo_adi']} silosunda yeterli boşluk yok. Maksimum " . number_format((float)$max_kg, 2, ',', '.') . " KG girebilirsiniz.";
+                    $hata = "{$silo['silo_adi']} silosunda yeterli boşluk yok. Maksimum " . number_format($max_kg, 2, ',', '.') . " KG girebilirsiniz.";
                     break;
                 }
 
@@ -562,7 +562,7 @@ if (isset($_POST["kantar_guncelle"])) {
 
         if (empty($islem_hatasi)) {
             $baglanti->commit();
-            header("Location: hammadde.php?kantar=ok&kg=" . number_format((float)$referans_kg, 0, ',', '.'));
+            header("Location: hammadde.php?kantar=ok&kg=" . number_format($referans_kg, 0, ',', '.'));
             exit;
         }
 
@@ -635,7 +635,7 @@ if (isset($_POST["giris_yap"])) {
                                 $baglanti,
                                 'arac_geldi',
                                 "Yeni Araç Geldi: $plaka",
-                                "Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format((float)$kg, 0, ',', '.') . " kg",
+                                "Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format($kg, 0, ',', '.') . " kg",
                                 $lab_rol_id,
                                 null,
                                 'hammadde_girisleri',
@@ -648,7 +648,7 @@ if (isset($_POST["giris_yap"])) {
                                 $baglanti,
                                 'arac_geldi',
                                 "Yeni Araç Geldi: $plaka",
-                                "Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format((float)$kg, 0, ',', '.') . " kg",
+                                "Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format($kg, 0, ',', '.') . " kg",
                                 1, // Patron rol_id
                                 null,
                                 'hammadde_girisleri',
@@ -664,11 +664,11 @@ if (isset($_POST["giris_yap"])) {
                         $baglanti,
                         'INSERT',
                         'Hammadde Kabul',
-                        "Yeni araç girişi: $plaka | Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format((float)$kg, 0, ',', '.') . " kg"
+                        "Yeni araç girişi: $plaka | Tedarikçi: $tedarikci | Hammadde: {$urun_bilgi['ad']} | " . number_format($kg, 0, ',', '.') . " kg"
                     );
 
                     // Redirect to prevent double submission
-                    header("Location: hammadde.php?giris=ok&plaka=" . urlencode($plaka) . "&m3=" . number_format((float)$girilen_m3, 2));
+                    header("Location: hammadde.php?giris=ok&plaka=" . urlencode($plaka) . "&m3=" . number_format($girilen_m3, 2));
                     exit;
                 } else {
                     $hata = "Kayıt hatası: " . $baglanti->error;
@@ -699,7 +699,7 @@ if ($silolar) {
         $kapasite_m3 = (float) ($s['kapasite_m3'] ?? 0);
         $doluluk_m3 = (float) ($s['doluluk_m3'] ?? 0);
         $bos_m3 = max(0, $kapasite_m3 - $doluluk_m3);
-        $bos_m3_text = number_format((float)$bos_m3, 2, ',', '.');
+        $bos_m3_text = number_format($bos_m3, 2, ',', '.');
         $izinli_attr = htmlspecialchars((string) ($s['izin_verilen_hammadde_kodlari'] ?? ''), ENT_QUOTES, 'UTF-8');
         $disabled = $bos_m3 <= 0 ? "disabled" : "";
         $base_label = $silo_adi;
@@ -1096,7 +1096,8 @@ if ($duzeltme_tablo_var) {
                                                 <?php while ($h = $hammaddeler->fetch_assoc()) {
                                                     $selected = (isset($_POST['hammadde_id']) && $_POST['hammadde_id'] == $h['id']) ? 'selected' : '';
                                                     ?>
-                                                    <option value="<?php echo $h["id"]; ?>" <?php echo $selected; ?>>
+                                                    <option value="<?php echo $h["id"]; ?>"
+                                                        <?php echo $selected; ?>>
                                                         <?php echo $h["hammadde_kodu"] . " - " . $h["ad"]; ?>
                                                     </option>
                                                 <?php } ?>
@@ -1167,7 +1168,9 @@ if ($duzeltme_tablo_var) {
                                     class="btn btn-sm <?php echo $aktif_tab === 'duzeltme_talepleri' ? 'btn-warning' : 'btn-outline-warning'; ?>">
                                     <i class="fas fa-rotate-left me-1"></i> Düzeltme Talepleri
                                     <?php if ($duzeltme_talepleri_bekleyen_adet > 0): ?>
-                                        <span class="badge bg-dark ms-1"><?php echo $duzeltme_talepleri_bekleyen_adet; ?></span>
+                                        <span class="badge bg-dark ms-1">
+                                            <?php echo $duzeltme_talepleri_bekleyen_adet; ?>
+                                        </span>
                                     <?php endif; ?>
                                 </a>
                             <?php endif; ?>
@@ -1253,35 +1256,61 @@ if ($duzeltme_tablo_var) {
                                         while ($row = $gecmis->fetch_assoc()) { ?>
                                             <tr>
                                                 <td data-order="<?php echo $row["tarih"]; ?>">
-                                                    <small><?php echo date("d.m.Y H:i", strtotime($row["tarih"])); ?></small>
+                                                    <small>
+                                                        <?php echo date("d.m.Y H:i", strtotime($row["tarih"])); ?>
+                                                    </small>
                                                 </td>
-                                                <td><span class="badge bg-secondary"><?php echo $row["arac_plaka"]; ?></span></td>
-                                                <td><small><?php echo htmlspecialchars($row["tedarikci"] ?? '-'); ?></small></td>
+                                                <td><span class="badge bg-secondary">
+                                                        <?php echo $row["arac_plaka"]; ?>
+                                                    </span></td>
+                                                <td><small>
+                                                        <?php echo htmlspecialchars($row["tedarikci"] ?? '-'); ?>
+                                                    </small></td>
                                                 <td>
                                                     <?php $durum_bilgi = hammaddeIzlenebilirlikDurum($row); ?>
-                                                    <strong class="text-primary"><?php echo $row["urun_adi"]; ?></strong>
+                                                    <strong class="text-primary">
+                                                        <?php echo $row["urun_adi"]; ?>
+                                                    </strong>
                                                     <?php if (!empty($row["parti_no"])) { ?>
-                                                        <div class="small text-muted"><i
-                                                                class="fas fa-barcode me-1"></i><?php echo $row["parti_no"]; ?></div>
+                                                        <div class="small text-muted"><i class="fas fa-barcode me-1"></i>
+                                                            <?php echo $row["parti_no"]; ?>
+                                                        </div>
                                                     <?php } ?>
                                                     <div class="mt-1">
                                                         <span class="badge <?php echo $durum_bilgi['badge_class']; ?>">
-                                                            <i
-                                                                class="fas <?php echo $durum_bilgi['icon']; ?> me-1"></i><?php echo $durum_bilgi['etiket']; ?>
+                                                            <i class="fas <?php echo $durum_bilgi['icon']; ?> me-1"></i>
+                                                            <?php echo $durum_bilgi['etiket']; ?>
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td><span
-                                                        class="badge bg-light text-dark border"><?php echo $row["silo_adi"] ?: '-'; ?></span>
+                                                <td><span class="badge bg-light text-dark border">
+                                                        <?php echo $row["silo_adi"] ?: '-'; ?>
+                                                    </span>
                                                 </td>
                                                 <td>
+                                                    <?php
+                                                    $kg_goster = (float) $row["miktar_kg"];
+                                                    // Eğer resmi miktar henüz girilmemişse (0), kantar referansını göster
+                                                    if ($kg_goster <= 0 && (float) ($row["referans_kantar_kg"] ?? 0) > 0) {
+                                                        $kg_goster = (float) $row["referans_kantar_kg"];
+                                                    }
+
+                                                    $m3_goster = (float) $row["hesaplanan_m3"];
+                                                    // Eğer m3 hesaplanmamışsa (0) ve miktarımız varsa, hektolitreye göre hesapla
+                                                    if ($m3_goster <= 0 && $kg_goster > 0) {
+                                                        $hl_degeri = (float) ($row["lab_hektolitre"] ?? $row["hektolitre"] ?? 0);
+                                                        $yogunluk_hesabi = ($hl_degeri > 0) ? ($hl_degeri * 10) : (float) ($row["hammadde_yogunluk"] ?? 780);
+                                                        if ($yogunluk_hesabi > 0) {
+                                                            $m3_goster = $kg_goster / $yogunluk_hesabi;
+                                                        }
+                                                    }
+                                                    ?>
                                                     <div class="fw-bold">
-                                                        <?php echo number_format((float)$row["miktar_kg"], 0, ',', '.'); ?> kg
+                                                        <?php echo number_format($kg_goster, 0, ',', '.'); ?> kg
                                                     </div>
                                                     <div class="small text-muted">
-                                                        <?php echo number_format((float)$row["hesaplanan_m3"], 2); ?> m³
+                                                        <?php echo number_format($m3_goster, 2); ?> m³
                                                     </div>
-
                                                 </td>
                                                 <td>
                                                     <div class="d-flex flex-wrap gap-1 analysis-badges">
@@ -1291,15 +1320,20 @@ if ($duzeltme_tablo_var) {
 
                                                         if ($has_lab) { ?>
                                                             <span class="badge badge-soft badge-soft-hl" title="Hektolitre">HL:
-                                                                <?php echo $row["lab_hektolitre"] ?: '-'; ?></span>
+                                                                <?php echo $row["lab_hektolitre"] ?: '-'; ?>
+                                                            </span>
                                                             <span class="badge badge-soft badge-soft-nem" title="Nem">N:
-                                                                <?php echo $row["lab_nem"] ?: '-'; ?> %</span>
+                                                                <?php echo $row["lab_nem"] ?: '-'; ?> %
+                                                            </span>
                                                             <span class="badge badge-soft badge-soft-prot" title="Protein">P:
-                                                                <?php echo $row["lab_protein"] ?: '-'; ?> %</span>
+                                                                <?php echo $row["lab_protein"] ?: '-'; ?> %
+                                                            </span>
                                                             <span class="badge badge-soft badge-soft-nis" title="Nişasta">Niş:
-                                                                <?php echo $row["lab_nisasta"] ?: '-'; ?> %</span>
+                                                                <?php echo $row["lab_nisasta"] ?: '-'; ?> %
+                                                            </span>
                                                             <span class="badge badge-soft badge-soft-sert" title="Sertlik">S:
-                                                                <?php echo $row["lab_sertlik"] ?: '-'; ?></span>
+                                                                <?php echo $row["lab_sertlik"] ?: '-'; ?>
+                                                            </span>
                                                         <?php } else { ?>
                                                             <a href="lab_analizleri.php"
                                                                 class="text-decoration-none small text-warning"><i
@@ -1350,17 +1384,27 @@ if ($duzeltme_tablo_var) {
                                                     ?>
                                                     <div class="d-flex justify-content-center gap-1">
                                                         <button type="button" class="btn btn-sm <?php echo $buton_sinifi; ?>" <?php echo $modal_aksiyon_aktif ? 'data-bs-toggle="modal" data-bs-target="#kantarModal"' : ''; ?>
-                                                            data-id="<?php echo $row['id']; ?>"
-                                                            data-plaka="<?php echo htmlspecialchars($row['arac_plaka']); ?>"
-                                                            data-tedarikci="<?php echo htmlspecialchars($row['tedarikci'] ?? ''); ?>"
-                                                            data-referans-kg="<?php echo (float) ($row['referans_kantar_kg'] ?? 0); ?>"
-                                                            data-hammadde-kodu="<?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
-                                                            data-yogunluk="<?php echo (float) ($row['hammadde_yogunluk'] ?? 780); ?>"
-                                                            data-patron-duzeltme="<?php echo $patron_direkt_duzeltme ? '1' : '0'; ?>"
-                                                            title="<?php echo $buton_title; ?>">
+                                                            data-id="
+                                                <?php echo $row['id']; ?>"
+                                                            data-plaka="
+                                                <?php echo htmlspecialchars($row['arac_plaka']); ?>"
+                                                            data-tedarikci="
+                                                <?php echo htmlspecialchars($row['tedarikci'] ?? ''); ?>"
+                                                            data-referans-kg="
+                                                <?php echo (float) ($row['referans_kantar_kg'] ?? 0); ?>"
+                                                            data-hammadde-kodu="
+                                                <?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
+                                                            data-yogunluk="
+                                                <?php echo (float) ($row['hammadde_yogunluk'] ?? 780); ?>"
+                                                            data-patron-duzeltme="
+                                                <?php echo $patron_direkt_duzeltme ? '1' : '0'; ?>"
+                                                            title="
+                                                <?php echo $buton_title; ?>">
                                                             <i class="fas <?php echo $buton_icon; ?>"></i>
                                                             <?php if ($buton_metin !== ''): ?>
-                                                                <small class="ms-1"><?php echo $buton_metin; ?></small>
+                                                                <small class="ms-1">
+                                                                    <?php echo $buton_metin; ?>
+                                                                </small>
                                                             <?php endif; ?>
                                                         </button>
 
@@ -1398,8 +1442,9 @@ if ($duzeltme_tablo_var) {
                     <div class="card shadow-sm mt-3" id="duzeltme_talepleri_kart">
                         <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
                             <h5 class="mb-0"><i class="fas fa-rotate-left me-2"></i>Silo Düzeltme Talepleri</h5>
-                            <span class="badge bg-dark"><?php echo (int) $duzeltme_talepleri_bekleyen_adet; ?>
-                                Bekleyen</span>
+                            <span class="badge bg-dark">
+                                <?php echo (int) $duzeltme_talepleri_bekleyen_adet; ?> Bekleyen
+                            </span>
                         </div>
                         <div class="table-responsive p-3">
                             <table class="table table-sm table-striped align-middle mb-0">
@@ -1429,12 +1474,13 @@ if ($duzeltme_tablo_var) {
                                                 $talep_badge = 'bg-success';
                                             ?>
                                             <tr>
-                                                <td><small><?php echo date("d.m.Y H:i", strtotime((string) ($talep['created_at'] ?? 'now'))); ?></small>
-                                                </td>
+                                                <td><small>
+                                                        <?php echo date("d.m.Y H:i", strtotime((string) ($talep['created_at'] ?? 'now'))); ?>
+                                                    </small></td>
                                                 <td>
-                                                    <div>
-                                                        <strong><?php echo htmlspecialchars((string) ($talep['parti_no'] ?? '-')); ?></strong>
-                                                    </div>
+                                                    <div><strong>
+                                                            <?php echo htmlspecialchars((string) ($talep['parti_no'] ?? '-')); ?>
+                                                        </strong></div>
                                                     <div class="small text-muted">
                                                         <?php echo htmlspecialchars((string) ($talep['hammadde_kodu'] ?? '-')); ?> /
                                                         <?php echo htmlspecialchars((string) ($talep['arac_plaka'] ?? '-')); ?>
@@ -1446,7 +1492,8 @@ if ($duzeltme_tablo_var) {
                                                     </div>
                                                     <?php if (!empty($talep['karar_veren_kadi'])): ?>
                                                         <div class="small text-muted">Karar:
-                                                            <?php echo htmlspecialchars((string) $talep['karar_veren_kadi']); ?></div>
+                                                            <?php echo htmlspecialchars((string) $talep['karar_veren_kadi']); ?>
+                                                        </div>
                                                     <?php endif; ?>
                                                 </td>
                                                 <td style="min-width:260px;">
@@ -1455,12 +1502,13 @@ if ($duzeltme_tablo_var) {
                                                     </div>
                                                     <?php if (!empty($talep['karar_notu'])): ?>
                                                         <div class="small text-muted mt-1"><strong>Not:</strong>
-                                                            <?php echo nl2br(htmlspecialchars((string) $talep['karar_notu'])); ?></div>
+                                                            <?php echo nl2br(htmlspecialchars((string) $talep['karar_notu'])); ?>
+                                                        </div>
                                                     <?php endif; ?>
                                                 </td>
-                                                <td><span
-                                                        class="badge <?php echo $talep_badge; ?>"><?php echo htmlspecialchars(ucfirst($talep_durum)); ?></span>
-                                                </td>
+                                                <td><span class="badge <?php echo $talep_badge; ?>">
+                                                        <?php echo htmlspecialchars(ucfirst($talep_durum)); ?>
+                                                    </span></td>
                                                 <td style="min-width:240px;">
                                                     <?php if ($is_patron && $talep_durum === 'bekliyor'): ?>
                                                         <form method="post" class="d-flex flex-column gap-1">
@@ -1801,29 +1849,29 @@ if ($duzeltme_tablo_var) {
         $(document).ready(function () {
             // SweetAlert2 Alerts
             <?php if (!empty($mesaj)): ?>
-                Swal.fire({
-                    toast: true,
-                    position: 'top-end',
-                    icon: 'success',
-                    title: '<?php echo addslashes(str_replace(["✅ ", "✓ "], "", $mesaj)); ?>',
-                    showConfirmButton: false,
-                    showCloseButton: true,
-                    timer: 5000,
-                    timerProgressBar: true,
-                    didOpen: (toast) => {
-                        toast.addEventListener('mouseenter', Swal.stopTimer)
-                        toast.addEventListener('mouseleave', Swal.resumeTimer)
-                    }
-                });
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: '<?php echo addslashes(str_replace(["✅ ", "✓ "], "", $mesaj)); ?>',
+                        showConfirmButton: false,
+                        showCloseButton: true,
+                        timer: 5000,
+                        timerProgressBar: true,
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer)
+                            toast.addEventListener('mouseleave', Swal.resumeTimer)
+                        }
+                    });
             <?php endif; ?>
 
             <?php if (!empty($hata)): ?>
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Hata!',
-                    text: '<?php echo addslashes(str_replace(["❌ ", "✖ ", "HATA: "], "", $hata)); ?>',
-                    confirmButtonColor: '#0f172a'
-                });
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Hata!',
+                        text: '<?php echo addslashes(str_replace(["❌ ", "✖ ", "HATA: "], "", $hata)); ?>',
+                        confirmButtonColor: '#0f172a'
+                    });
             <?php endif; ?>
 
             if ($('#gecmisTablo').length) {

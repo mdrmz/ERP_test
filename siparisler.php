@@ -39,6 +39,7 @@ if (isset($_POST["musteri_ekle"])) {
             $hata = "Hata: " . $baglanti->error;
         }
     }
+}
 
 // --- 2. YENİ SİPARİŞ OLUŞTUR ---
 if (isset($_POST["siparis_olustur"])) {
