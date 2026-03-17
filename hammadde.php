@@ -61,66 +61,193 @@ if (isset($_GET['kantar']) && $_GET['kantar'] == 'ok') {
 
 // KANTAR GÜNCELLEMESİ (Düzenleme Modalından)
 if (isset($_POST["kantar_guncelle"])) {
-    $giris_id = (int) $_POST["giris_id"];
-    $yeni_kg = (float) $_POST["yeni_kg"];
+    $giris_id = (int) ($_POST["giris_id"] ?? 0);
 
     $dagitim_silo_ids = $_POST['dagitim_silo_id'] ?? [];
     $dagitim_kgs = $_POST['dagitim_kg'] ?? [];
 
-    // Mevcut kaydı al
-    $mevcut = $baglanti->query("SELECT hg.*, h.yogunluk_kg_m3, h.hammadde_kodu, h.ad as hammadde_adi FROM hammadde_girisleri hg LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id WHERE hg.id = $giris_id")->fetch_assoc();
+    if ($giris_id <= 0) {
+        $hata = "Geçersiz giriş kaydı.";
+    } else {
+        $mevcut_sql = "
+            SELECT hg.*, h.yogunluk_kg_m3, h.hammadde_kodu, h.ad as hammadde_adi, hka.kantar_net_kg,
+                   (SELECT la.hektolitre FROM lab_analizleri la WHERE la.hammadde_giris_id = hg.id ORDER BY la.id DESC LIMIT 1) as lab_hektolitre
+            FROM hammadde_girisleri hg
+            LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id
+            LEFT JOIN hammadde_kabul_akisi hka ON hka.hammadde_giris_id = hg.id
+            WHERE hg.id = $giris_id
+            ORDER BY hka.id DESC
+            LIMIT 1
+        ";
+        $mevcut = $baglanti->query($mevcut_sql);
+        $mevcut = $mevcut ? $mevcut->fetch_assoc() : null;
 
-    if ($mevcut) {
-        $eski_m3 = (float) $mevcut["giris_m3"];
-        $yogunluk = (float) ($mevcut["yogunluk_kg_m3"] ?? 780);
-        if ($yogunluk <= 0)
-            $yogunluk = 780; // Fallback to avoid division by zero
-        $yeni_m3 = $yeni_kg / $yogunluk;
+        if (!$mevcut) {
+            $hata = "Hammadde girişi bulunamadı.";
+        } else {
+            $referans_kg = (float) ($mevcut["kantar_net_kg"] ?? 0);
+            $hektolitre_degeri = (float) ($mevcut["hektolitre"] ?? 0);
+            if ($hektolitre_degeri <= 0) {
+                $hektolitre_degeri = (float) ($mevcut["lab_hektolitre"] ?? 0);
+            }
 
-        $ilk_silo_id = (!empty($dagitim_silo_ids[0])) ? (int) $dagitim_silo_ids[0] : 'NULL';
+            // Hektolitre (kg/hl) -> Yogunluk (kg/m3): 1 hl = 0.1 m3
+            if ($hektolitre_degeri > 0) {
+                $yogunluk = $hektolitre_degeri * 10;
+            } else {
+                $yogunluk = (float) ($mevcut["yogunluk_kg_m3"] ?? 780);
+            }
 
-        // Hammadde girişini güncelle
-        $sql_update = "UPDATE hammadde_girisleri SET miktar_kg = $yeni_kg, giris_m3 = $yeni_m3";
-        if ($ilk_silo_id !== 'NULL' && empty($mevcut['silo_id'])) {
-            $sql_update .= ", silo_id = $ilk_silo_id";
+            $hammadde_kodu = trim((string) ($mevcut["hammadde_kodu"] ?? ''));
+            $hammadde_adi = $mevcut["hammadde_adi"] ?? '';
+
+            if ($yogunluk <= 0) {
+                $yogunluk = 780;
+            }
+
+            if ($referans_kg <= 0) {
+                $hata = "Satınalma kantar değeri bulunamadı. Önce satınalma tarafında net KG onaylanmalıdır.";
+            }
         }
-        $sql_update .= " WHERE id = $giris_id";
+    }
 
-        if ($baglanti->query($sql_update)) {
-            $eski_silo_m3 = $yeni_m3 - $eski_m3;
-            $dagitim_yapildi = false;
+    if (empty($hata)) {
+        $dagitimlar = [];
+        $toplam_dagitim_kg = 0.0;
+        $ilk_silo_id = 0;
+        $max_satir = max(count($dagitim_silo_ids), count($dagitim_kgs));
 
-            // Çoklu silo aktarımı varsa onu kaydet ve FIFO datasına ekle
-            for ($i = 0; $i < count($dagitim_silo_ids); $i++) {
-                $s_id = (int) $dagitim_silo_ids[$i];
-                $a_kg = (float) $dagitim_kgs[$i];
+        for ($i = 0; $i < $max_satir; $i++) {
+            $silo_raw = trim((string) ($dagitim_silo_ids[$i] ?? ''));
+            $kg_raw = trim((string) ($dagitim_kgs[$i] ?? ''));
 
-                if ($s_id > 0 && $a_kg > 0) {
-                    $dagitim_yapildi = true;
-                    // Silolanin fifo kaydi
-                    $parti_kodu = $baglanti->real_escape_string($mevcut['parti_no']);
-                    $hammadde_turu = $baglanti->real_escape_string($mevcut['hammadde_adi']);
+            if ($silo_raw === '' && $kg_raw === '') {
+                continue;
+            }
 
-                    $fifo_sql = "INSERT INTO silo_stok_detay (silo_id, parti_kodu, hammadde_turu, giren_miktar_kg, kalan_miktar_kg, giris_tarihi, durum) VALUES ($s_id, '$parti_kodu', '$hammadde_turu', $a_kg, $a_kg, NOW(), 'aktif')";
-                    $baglanti->query($fifo_sql);
+            if ($silo_raw === '' || $kg_raw === '') {
+                $hata = "Her dağıtım satırında hem silo hem miktar girilmelidir.";
+                break;
+            }
 
-                    // Silolarin kapasitesini guncelle
-                    $aktarilan_m3 = $a_kg / $yogunluk;
-                    $baglanti->query("UPDATE silolar SET doluluk_m3 = doluluk_m3 + $aktarilan_m3 WHERE id = $s_id");
+            $silo_id = (int) $silo_raw;
+            $miktar_kg = (float) $kg_raw;
+            if ($silo_id <= 0 || $miktar_kg <= 0) {
+                $hata = "Dağıtım satırlarındaki silo ve KG değerleri geçerli olmalıdır.";
+                break;
+            }
+
+            if ($ilk_silo_id === 0) {
+                $ilk_silo_id = $silo_id;
+            }
+
+            if (!isset($dagitimlar[$silo_id])) {
+                $dagitimlar[$silo_id] = 0.0;
+            }
+            $dagitimlar[$silo_id] += $miktar_kg;
+            $toplam_dagitim_kg += $miktar_kg;
+        }
+
+        if (empty($hata) && count($dagitimlar) === 0) {
+            $hata = "En az bir silo dağıtımı girmelisiniz.";
+        }
+
+        if (empty($hata) && abs($toplam_dagitim_kg - $referans_kg) > 0.01) {
+            $hata = "Toplam dağıtım (" . number_format($toplam_dagitim_kg, 2, ',', '.') . " KG), satınalma kantar değeriyle (" . number_format($referans_kg, 2, ',', '.') . " KG) birebir aynı olmalıdır.";
+        }
+    }
+
+    if (empty($hata)) {
+        $parti_kodu_esc = $baglanti->real_escape_string($mevcut['parti_no']);
+        $kilit_kontrol = $baglanti->query("SELECT id FROM silo_stok_detay WHERE parti_kodu = '$parti_kodu_esc' LIMIT 1");
+        if ($kilit_kontrol && $kilit_kontrol->num_rows > 0) {
+            $hata = "Bu parti için daha önce silo dağıtımı yapılmış. Aynı parti ikinci kez dağıtılamaz.";
+        }
+    }
+
+    if (empty($hata)) {
+        $silo_ids = array_map('intval', array_keys($dagitimlar));
+        $silo_id_list = implode(',', $silo_ids);
+        $silo_kayitlari = $baglanti->query("SELECT id, silo_adi, kapasite_m3, doluluk_m3, izin_verilen_hammadde_kodlari FROM silolar WHERE id IN ($silo_id_list)");
+
+        if (!$silo_kayitlari) {
+            $hata = "Silo kayıtları alınamadı: " . $baglanti->error;
+        } else {
+            $silo_map = [];
+            while ($s = $silo_kayitlari->fetch_assoc()) {
+                $silo_map[(int) $s['id']] = $s;
+            }
+
+            foreach ($dagitimlar as $silo_id => $miktar_kg) {
+                if (!isset($silo_map[$silo_id])) {
+                    $hata = "Seçilen silo bulunamadı (ID: $silo_id).";
+                    break;
+                }
+
+                $silo = $silo_map[$silo_id];
+                $kapasite_m3 = (float) ($silo['kapasite_m3'] ?? 0);
+                $doluluk_m3 = (float) ($silo['doluluk_m3'] ?? 0);
+                $bos_m3 = max(0, $kapasite_m3 - $doluluk_m3);
+                $max_kg = $bos_m3 * $yogunluk;
+
+                if (($miktar_kg - $max_kg) > 0.01) {
+                    $hata = "{$silo['silo_adi']} silosunda yeterli boşluk yok. Maksimum " . number_format($max_kg, 2, ',', '.') . " KG girebilirsiniz.";
+                    break;
+                }
+
+                $izinli_raw = $silo['izin_verilen_hammadde_kodlari'];
+                if (!empty($izinli_raw)) {
+                    $izinli_list = json_decode($izinli_raw, true);
+                    if (is_array($izinli_list) && count($izinli_list) > 0 && !in_array($hammadde_kodu, $izinli_list, true)) {
+                        $hata = "{$silo['silo_adi']} silosuna {$hammadde_kodu} kodlu hammadde girişi izinli değil.";
+                        break;
+                    }
                 }
             }
-
-            // Eğer yeni bir dağıtım yapılmadıysa ve kayıtlı bir silosu varsa sadece kantar miktar farkını siloya yansıt
-            if (!$dagitim_yapildi && $mevcut["silo_id"]) {
-                $sql_silo = "UPDATE silolar SET doluluk_m3 = doluluk_m3 + $eski_silo_m3 WHERE id = " . $mevcut["silo_id"];
-                $baglanti->query($sql_silo);
-            }
-
-            header("Location: hammadde.php?kantar=ok&kg=" . number_format($yeni_kg, 0, ',', '.'));
-            exit;
-        } else {
-            $hata = "Güncelleme hatası: " . $baglanti->error;
         }
+    }
+
+    if (empty($hata)) {
+        $guncel_m3 = $referans_kg / $yogunluk;
+        $parti_kodu = $baglanti->real_escape_string($mevcut['parti_no']);
+        $hammadde_turu = $baglanti->real_escape_string($hammadde_adi);
+        $islem_hatasi = "";
+
+        $baglanti->begin_transaction();
+
+        $sql_update = "UPDATE hammadde_girisleri SET miktar_kg = $referans_kg, giris_m3 = $guncel_m3, silo_id = $ilk_silo_id";
+        if ($hektolitre_degeri > 0) {
+            $sql_update .= ", hektolitre = $hektolitre_degeri";
+        }
+        $sql_update .= " WHERE id = $giris_id";
+        if (!$baglanti->query($sql_update)) {
+            $islem_hatasi = "Hammadde girişi güncellenemedi: " . $baglanti->error;
+        }
+
+        if (empty($islem_hatasi)) {
+            foreach ($dagitimlar as $s_id => $a_kg) {
+                $fifo_sql = "INSERT INTO silo_stok_detay (silo_id, parti_kodu, hammadde_turu, giren_miktar_kg, kalan_miktar_kg, giris_tarihi, durum) VALUES ($s_id, '$parti_kodu', '$hammadde_turu', $a_kg, $a_kg, NOW(), 'aktif')";
+                if (!$baglanti->query($fifo_sql)) {
+                    $islem_hatasi = "FIFO kaydı oluşturulamadı: " . $baglanti->error;
+                    break;
+                }
+
+                $aktarilan_m3 = $a_kg / $yogunluk;
+                if (!$baglanti->query("UPDATE silolar SET doluluk_m3 = doluluk_m3 + $aktarilan_m3 WHERE id = $s_id")) {
+                    $islem_hatasi = "Silo doluluğu güncellenemedi: " . $baglanti->error;
+                    break;
+                }
+            }
+        }
+
+        if (empty($islem_hatasi)) {
+            $baglanti->commit();
+            header("Location: hammadde.php?kantar=ok&kg=" . number_format($referans_kg, 0, ',', '.'));
+            exit;
+        }
+
+        $baglanti->rollback();
+        $hata = $islem_hatasi;
     }
 }
 
@@ -242,6 +369,25 @@ if (isset($_POST["giris_yap"])) {
 // LİSTELERİ ÇEK
 $silolar = $baglanti->query("SELECT * FROM silolar");
 $hammaddeler = $baglanti->query("SELECT * FROM hammaddeler");
+$silo_option_html = "";
+if ($silolar) {
+    $silolar->data_seek(0);
+    while ($s = $silolar->fetch_assoc()) {
+        $s_id = (int) $s['id'];
+        $silo_adi = htmlspecialchars($s['silo_adi'] ?? '', ENT_QUOTES, 'UTF-8');
+        $kapasite_m3 = (float) ($s['kapasite_m3'] ?? 0);
+        $doluluk_m3 = (float) ($s['doluluk_m3'] ?? 0);
+        $bos_m3 = max(0, $kapasite_m3 - $doluluk_m3);
+        $bos_m3_text = number_format($bos_m3, 2, ',', '.');
+        $izinli_attr = htmlspecialchars((string) ($s['izin_verilen_hammadde_kodlari'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $disabled = $bos_m3 <= 0 ? "disabled" : "";
+        $base_label = $silo_adi;
+        $label = $base_label . " (Boş: {$bos_m3_text} m³)";
+
+        $silo_option_html .= "<option value='{$s_id}' data-bos-m3='{$bos_m3}' data-izinli='{$izinli_attr}' data-base-label='{$base_label}' {$disabled}>{$label}</option>";
+    }
+    $silolar->data_seek(0);
+}
 
 // Filtre Değişkenleri
 $filtre_baslangic = $_GET['f_baslangic'] ?? '';
@@ -271,9 +417,9 @@ if (!empty($filtre_plaka)) {
     $sql_filtre .= " AND hg.arac_plaka LIKE '%" . $baglanti->real_escape_string($filtre_plaka) . "%'";
 }
 
-$sql_gecmis = "SELECT hg.*, s.silo_adi, h.ad as urun_adi, hg.giris_m3 as hesaplanan_m3, 
+$sql_gecmis = "SELECT hg.*, s.silo_adi, h.ad as urun_adi, h.hammadde_kodu, h.yogunluk_kg_m3 as hammadde_yogunluk, hg.giris_m3 as hesaplanan_m3,
                la.hektolitre as lab_hektolitre, la.nem as lab_nem, la.protein as lab_protein, la.nisasta as lab_nisasta, la.sertlik as lab_sertlik,
-               hka.asama as olay_asamasi
+               hka.asama as olay_asamasi, hka.kantar_net_kg as referans_kantar_kg
                FROM hammadde_girisleri hg 
                LEFT JOIN silolar s ON hg.silo_id = s.id 
                LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id 
@@ -755,8 +901,10 @@ $hammaddeler->data_seek(0);
                                                     <?php echo $kantar_aktif ? 'data-bs-toggle="modal" data-bs-target="#kantarModal"' : ''; ?>
                                                     data-id="<?php echo $row['id']; ?>"
                                                     data-plaka="<?php echo htmlspecialchars($row['arac_plaka']); ?>"
-                                                    data-kg="<?php echo $row['miktar_kg']; ?>"
                                                     data-tedarikci="<?php echo htmlspecialchars($row['tedarikci'] ?? ''); ?>"
+                                                    data-referans-kg="<?php echo (float) ($row['referans_kantar_kg'] ?? 0); ?>"
+                                                    data-hammadde-kodu="<?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
+                                                    data-yogunluk="<?php echo (float) ($row['hammadde_yogunluk'] ?? 780); ?>"
                                                     title="<?php echo $buton_title; ?>">
                                                     <i
                                                         class="fas <?php echo $kantar_bekliyor ? 'fa-balance-scale' : 'fa-edit'; ?>"></i>
@@ -789,38 +937,51 @@ $hammaddeler->data_seek(0);
                     <div class="alert alert-info py-2 small">
                         <i class="fas fa-info-circle me-1"></i> Satınalma tarafından onaylanan kantar ağırlığı aşağıdaki gibidir. Lütfen malzemenin döküleceği siloyu seçiniz.
                     </div>
-                    <form method="post">
+                    <form method="post" id="kantarDagitimForm">
                         <input type="hidden" name="giris_id" id="modal_giris_id">
-                            <p class="small text-muted mb-2">Hammaddeyi silolara dağıtın. Silo FIFO takibi otomatik
-                                başlatılacaktır.</p>
+                        <input type="hidden" id="modal_hammadde_yogunluk" value="780">
+                        <input type="hidden" id="modal_referans_kg_raw" value="0">
 
-                            <div id="silo_dagitim_alani">
-                                <div class="row g-2 mb-2 silo-satir">
-                                    <div class="col-md-7">
-                                        <select name="dagitim_silo_id[]" class="form-select dagitim-silo-select">
-                                            <option value="">Silo Seç...</option>
-                                            <?php
-                                            $silolar->data_seek(0);
-                                            while ($s = $silolar->fetch_assoc()) {
-                                                $bos_m3 = $s['kapasite_m3'] - $s['doluluk_m3'];
-                                                $bos_m3_text = number_format($bos_m3, 1);
-                                                echo "<option value='{$s['id']}'>{$s['silo_adi']} (Boş: {$bos_m3_text} m³)</option>";
-                                            }
-                                            ?>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-5">
-                                        <div class="input-group">
-                                            <input type="number" name="dagitim_kg[]" class="form-control"
-                                                placeholder="Miktar">
-                                            <span class="input-group-text">KG</span>
-                                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted mb-1">Plaka</label>
+                                <input type="text" id="modal_plaka" class="form-control form-control-sm" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted mb-1">Tedarikçi</label>
+                                <input type="text" id="modal_tedarikci" class="form-control form-control-sm" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted mb-1">Hammadde Kodu</label>
+                                <input type="text" id="modal_hammadde_kodu" class="form-control form-control-sm" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted mb-1">Referans Kantar (KG)</label>
+                                <input type="text" id="modal_referans_kg" class="form-control form-control-sm fw-bold text-primary" readonly>
+                            </div>
+                        </div>
+
+                        <p class="small text-muted mb-2">Toplam silo dağıtımı referans kantar değeriyle birebir aynı olmalıdır.</p>
+
+                        <div id="silo_dagitim_alani">
+                            <div class="row g-2 mb-2 silo-satir">
+                                <div class="col-md-7">
+                                    <select name="dagitim_silo_id[]" class="form-select dagitim-silo-select">
+                                        <option value="">Silo Seç...</option>
+                                        <?php echo $silo_option_html; ?>
+                                    </select>
+                                </div>
+                                <div class="col-md-5">
+                                    <div class="input-group">
+                                        <input type="number" name="dagitim_kg[]" class="form-control dagitim-kg-input" step="0.01" min="0"
+                                            placeholder="Miktar">
+                                        <span class="input-group-text">KG</span>
                                     </div>
                                 </div>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary mt-2"
-                                onclick="yeniSiloSatiriEkle()"><i class="fas fa-plus"></i> Silo Ekle</button>
                         </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2"
+                            onclick="yeniSiloSatiriEkle()"><i class="fas fa-plus"></i> Silo Ekle</button>
 
                         <div class="d-grid gap-2 mt-4">
                             <button type="submit" name="kantar_guncelle" class="btn btn-success btn-lg">
@@ -834,25 +995,29 @@ $hammaddeler->data_seek(0);
     </div>
 
     <script>
+        const siloOptionHtml = <?php echo json_encode($silo_option_html, JSON_UNESCAPED_UNICODE); ?>;
+
+        function parseSafeFloat(value) {
+            if (typeof value !== 'string') {
+                value = String(value ?? '');
+            }
+            value = value.replace(',', '.').trim();
+            const parsed = parseFloat(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+
         function yeniSiloSatiriEkle() {
             var satirHTML = `
                 <div class="row g-2 mb-2 silo-satir mt-2 border-top pt-2">
                     <div class="col-md-7">
                         <select name="dagitim_silo_id[]" class="form-select dagitim-silo-select">
                             <option value="">Silo Seç...</option>
-                            <?php
-                            $silolar->data_seek(0);
-                            while ($s = $silolar->fetch_assoc()) {
-                                $bos_m3 = $s['kapasite_m3'] - $s['doluluk_m3'];
-                                $bos_m3_text = number_format($bos_m3, 1);
-                                echo "<option value='{$s['id']}'>{$s['silo_adi']} (Boş: {$bos_m3_text} m³)</option>";
-                            }
-                            ?>
+                            ${siloOptionHtml}
                         </select>
                     </div>
                     <div class="col-md-4">
                         <div class="input-group">
-                            <input type="number" name="dagitim_kg[]" class="form-control" placeholder="Miktar">
+                            <input type="number" name="dagitim_kg[]" class="form-control dagitim-kg-input" step="0.01" min="0" placeholder="Miktar">
                             <span class="input-group-text">KG</span>
                         </div>
                     </div>
@@ -861,6 +1026,114 @@ $hammaddeler->data_seek(0);
                     </div>
                 </div>`;
             document.getElementById('silo_dagitim_alani').insertAdjacentHTML('beforeend', satirHTML);
+            guncelleSiloSecenekleri();
+        }
+
+        function dagitimSatirlariniSifirla() {
+            const alan = document.getElementById('silo_dagitim_alani');
+            if (!alan) {
+                return;
+            }
+
+            const satirlar = alan.querySelectorAll('.silo-satir');
+            satirlar.forEach((satir, index) => {
+                if (index === 0) {
+                    const select = satir.querySelector('.dagitim-silo-select');
+                    const kgInput = satir.querySelector('.dagitim-kg-input');
+                    if (select) {
+                        select.selectedIndex = 0;
+                    }
+                    if (kgInput) {
+                        kgInput.value = '';
+                    }
+                } else {
+                    satir.remove();
+                }
+            });
+        }
+
+        function guncelleSiloSecenekleri() {
+            const hammaddeKodu = (document.getElementById('modal_hammadde_kodu')?.value || '').trim();
+            const yogunluk = parseSafeFloat(document.getElementById('modal_hammadde_yogunluk')?.value || '780') || 780;
+            const secenekler = document.querySelectorAll('.dagitim-silo-select option');
+
+            secenekler.forEach((option) => {
+                if (!option.value) {
+                    return;
+                }
+
+                const bosM3 = parseSafeFloat(option.getAttribute('data-bos-m3'));
+                const izinliRaw = option.getAttribute('data-izinli') || '';
+                const baseLabel = option.getAttribute('data-base-label') || option.textContent;
+                const maxKg = Math.max(0, bosM3 * yogunluk);
+                let izinli = true;
+
+                if (izinliRaw.trim() !== '') {
+                    try {
+                        const izinliList = JSON.parse(izinliRaw);
+                        if (Array.isArray(izinliList) && izinliList.length > 0) {
+                            izinli = izinliList.includes(hammaddeKodu);
+                        }
+                    } catch (e) {
+                        izinli = true;
+                    }
+                }
+
+                const kapasiteVar = bosM3 > 0.0001;
+                option.disabled = (!izinli || !kapasiteVar);
+
+                let label = `${baseLabel} (Boş: ${bosM3.toFixed(2)} m³ / Max: ${Math.floor(maxKg)} KG)`;
+                if (!izinli) {
+                    label += ' - Bu hammaddeye kapalı';
+                } else if (!kapasiteVar) {
+                    label += ' - Yer yok';
+                }
+                option.textContent = label;
+            });
+        }
+
+        function dagitimFormKontrol(event) {
+            const referansKg = parseSafeFloat(document.getElementById('modal_referans_kg_raw')?.value || '0');
+            const satirlar = document.querySelectorAll('#silo_dagitim_alani .silo-satir');
+            let toplam = 0;
+            let doluSatir = 0;
+
+            for (const satir of satirlar) {
+                const silo = satir.querySelector('.dagitim-silo-select')?.value || '';
+                const kgVal = satir.querySelector('.dagitim-kg-input')?.value || '';
+                const kg = parseSafeFloat(kgVal);
+
+                if (silo === '' && kgVal.trim() === '') {
+                    continue;
+                }
+
+                if (silo === '' || kg <= 0) {
+                    event.preventDefault();
+                    Swal.fire({ icon: 'warning', title: 'Eksik Dağıtım Satırı', text: 'Her satırda silo ve pozitif KG girilmelidir.' });
+                    return false;
+                }
+
+                toplam += kg;
+                doluSatir++;
+            }
+
+            if (doluSatir === 0) {
+                event.preventDefault();
+                Swal.fire({ icon: 'warning', title: 'Dağıtım Yok', text: 'En az bir silo dağıtımı girmelisiniz.' });
+                return false;
+            }
+
+            if (Math.abs(toplam - referansKg) > 0.01) {
+                event.preventDefault();
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Toplam Uyuşmuyor',
+                    text: `Toplam dağıtım ${toplam.toFixed(2)} KG. Referans kantar ${referansKg.toFixed(2)} KG olmalıdır.`
+                });
+                return false;
+            }
+
+            return true;
         }
     </script>
 
@@ -973,14 +1246,29 @@ $hammaddeler->data_seek(0);
                     var button = event.relatedTarget;
                     var id = button.getAttribute('data-id');
                     var plaka = button.getAttribute('data-plaka');
-                    var kg = button.getAttribute('data-kg');
                     var tedarikci = button.getAttribute('data-tedarikci');
+                    var referansKg = parseSafeFloat(button.getAttribute('data-referans-kg') || '0');
+                    var hammaddeKodu = button.getAttribute('data-hammadde-kodu') || '';
+                    var yogunluk = parseSafeFloat(button.getAttribute('data-yogunluk') || '780');
 
                     document.getElementById('modal_giris_id').value = id;
                     document.getElementById('modal_plaka').value = plaka;
                     document.getElementById('modal_tedarikci').value = tedarikci || '-';
-                    document.getElementById('modal_kg').value = kg > 0 ? kg : '';
+                    document.getElementById('modal_hammadde_kodu').value = hammaddeKodu;
+                    document.getElementById('modal_hammadde_yogunluk').value = yogunluk > 0 ? yogunluk : 780;
+                    document.getElementById('modal_referans_kg_raw').value = referansKg;
+                    document.getElementById('modal_referans_kg').value = referansKg > 0
+                        ? referansKg.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+                        : '-';
+
+                    dagitimSatirlariniSifirla();
+                    guncelleSiloSecenekleri();
                 });
+            }
+
+            var dagitimForm = document.getElementById('kantarDagitimForm');
+            if (dagitimForm) {
+                dagitimForm.addEventListener('submit', dagitimFormKontrol);
             }
 
             // Hammadde cinsine göre otomatik seri/parti numarası getirme

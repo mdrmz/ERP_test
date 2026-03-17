@@ -48,6 +48,25 @@ if (!function_exists('alertMesaj')) {
     }
 }
 
+if (!function_exists('normalizeKodList')) {
+    function normalizeKodList($kodlar)
+    {
+        if (!is_array($kodlar)) {
+            return [];
+        }
+
+        $temiz = [];
+        foreach ($kodlar as $kod) {
+            $kod = trim((string) $kod);
+            if ($kod !== '') {
+                $temiz[] = $kod;
+            }
+        }
+
+        return array_values(array_unique($temiz));
+    }
+}
+
 // --- ANA İŞLEMLER ---
 
 $mesaj = "";
@@ -58,16 +77,25 @@ if (isset($_POST['silo_ekle'])) {
     $adi = $baglanti->real_escape_string($_POST['silo_adi'] ?? '');
     $tip = $baglanti->real_escape_string($_POST['tip'] ?? 'bugday');
     $kapasite = (float) ($_POST['kapasite_m3'] ?? 0);
-    $yogunluk = (float) ($_POST['yogunluk'] ?? 0.6);
+    $izinli_kodlar = normalizeKodList($_POST['yeni_izinli_kodlar'] ?? []);
 
     if ($kapasite <= 0)
         $kapasite = 10;
-    if ($yogunluk <= 0)
-        $yogunluk = 0.6;
+
+    $tip_izinli = ['bugday', 'un', 'tav', 'kepek'];
+    if (!in_array($tip, $tip_izinli, true)) {
+        $tip = 'bugday';
+    }
 
     if ($adi) {
-        $sql = "INSERT INTO silolar (silo_adi, tip, kapasite_m3, yogunluk, durum, doluluk_m3) 
-                VALUES ('$adi', '$tip', $kapasite, $yogunluk, 'aktif', 0)";
+        $izinli_sql = "NULL";
+        if (!empty($izinli_kodlar)) {
+            $izinli_json = $baglanti->real_escape_string(json_encode($izinli_kodlar, JSON_UNESCAPED_UNICODE));
+            $izinli_sql = "'$izinli_json'";
+        }
+
+        $sql = "INSERT INTO silolar (silo_adi, tip, kapasite_m3, durum, doluluk_m3, aktif_hammadde_kodu, izin_verilen_hammadde_kodlari) 
+                VALUES ('$adi', '$tip', $kapasite, 'aktif', 0, NULL, $izinli_sql)";
 
         if ($baglanti->query($sql)) {
             $mesaj = "✅ Silo eklendi: $adi";
@@ -93,12 +121,15 @@ if (isset($_POST['silo_sil'])) {
 if (isset($_POST['silo_guncelle'])) {
     $id = (int) ($_POST['silo_id'] ?? 0);
     $adi = $baglanti->real_escape_string($_POST['silo_adi'] ?? '');
-    $yogunluk = (float) ($_POST['yogunluk'] ?? 0.6);
     $kapasite = (float) ($_POST['kapasite_m3'] ?? 0);
     $durum = $baglanti->real_escape_string($_POST['durum'] ?? 'aktif');
+    $durum_izinli = ['aktif', 'bakim', 'temizlik'];
+    if (!in_array($durum, $durum_izinli, true)) {
+        $durum = 'aktif';
+    }
 
     // Warning Hatası Çözümü: Null coalescing operator (??) kullanarak boş gelirse boş string ata
-    $raw_aktif = $_POST['aktif_hammadde_kodu'] ?? '';
+    $raw_aktif = trim((string) ($_POST['aktif_hammadde_kodu'] ?? ''));
     $aktif_kod = $baglanti->real_escape_string($raw_aktif);
 
     // Eğer 'Boş' seçildiyse (value="") veritabanına NULL veya boş string kaydet
@@ -108,16 +139,27 @@ if (isset($_POST['silo_guncelle'])) {
         $aktif_kod_sql = "'$aktif_kod'";
 
     // JSON Verisi (Checkboxlar gelmemişse null)
-    $izinli_kodlar = isset($_POST['izinli_kodlar']) ? json_encode($_POST['izinli_kodlar']) : NULL;
-    if ($izinli_kodlar)
-        $izinli_kodlar = $baglanti->real_escape_string($izinli_kodlar);
-    $izinli_sql = $izinli_kodlar ? "'$izinli_kodlar'" : "NULL";
+    $izinli_kodlar = normalizeKodList($_POST['izinli_kodlar'] ?? []);
+    $izinli_sql = "NULL";
+    if (!empty($izinli_kodlar)) {
+        $izinli_json = $baglanti->real_escape_string(json_encode($izinli_kodlar, JSON_UNESCAPED_UNICODE));
+        $izinli_sql = "'$izinli_json'";
+    }
 
     if ($id > 0) {
+        if ($kapasite <= 0) {
+            $hata = "Kapasite 0'dan buyuk olmali.";
+        } elseif ($adi === '') {
+            $hata = "Silo adi bos olamaz.";
+        } elseif ($raw_aktif !== '' && !empty($izinli_kodlar) && !in_array($raw_aktif, $izinli_kodlar, true)) {
+            $hata = "Aktif urun, izin verilen hammadde listesinde olmalidir.";
+        }
+    }
+
+    if ($id > 0 && $hata === "") {
         // aktif_hammadde_kodu için özel SQL formatı (NULL desteği)
         $sql = "UPDATE silolar SET 
                 silo_adi='$adi', 
-                yogunluk=$yogunluk, 
                 kapasite_m3=$kapasite, 
                 durum='$durum',
                 aktif_hammadde_kodu=$aktif_kod_sql, 
@@ -136,8 +178,28 @@ if (isset($_POST['silo_guncelle'])) {
 if (isset($_POST['silo_sifirla'])) {
     $id = (int) ($_POST['silo_id'] ?? 0);
     if ($id > 0) {
-        $baglanti->query("UPDATE silolar SET doluluk_m3=0, aktif_hammadde_kodu=NULL, durum='temizlik' WHERE id=$id");
-        $mesaj = "✅ Silo boşaltıldı.";
+        $baglanti->begin_transaction();
+        try {
+            $fifo_sql = "UPDATE silo_stok_detay 
+                         SET kalan_miktar_kg = 0 
+                         WHERE silo_id = $id AND kalan_miktar_kg > 0";
+            if (!$baglanti->query($fifo_sql)) {
+                throw new Exception($baglanti->error);
+            }
+
+            $silo_sql = "UPDATE silolar 
+                         SET doluluk_m3=0, aktif_hammadde_kodu=NULL, durum='temizlik' 
+                         WHERE id=$id";
+            if (!$baglanti->query($silo_sql)) {
+                throw new Exception($baglanti->error);
+            }
+
+            $baglanti->commit();
+            $mesaj = "Silo bosaltildi.";
+        } catch (Throwable $e) {
+            $baglanti->rollback();
+            $hata = "Silo bosaltma hatasi: " . $e->getMessage();
+        }
     }
 }
 
@@ -149,13 +211,59 @@ $silolar_kepek = $baglanti->query("SELECT * FROM silolar WHERE tip='kepek' ORDER
 
 // HAMMADDELER
 $hammadde_listesi = [];
-$hm_sql = "SELECT hammadde_kodu FROM hammaddeler ORDER BY hammadde_kodu";
+$hammadde_yogunluk_map = [];
+$hm_sql = "SELECT hammadde_kodu, yogunluk_kg_m3 FROM hammaddeler ORDER BY hammadde_kodu";
 $h_result = $baglanti->query($hm_sql);
 
 if ($h_result) {
     while ($r = $h_result->fetch_assoc()) {
         $r['hammadde_adi'] = ''; // UI hatası önlemi
         $hammadde_listesi[] = $r;
+        $kod = trim((string) ($r['hammadde_kodu'] ?? ''));
+        $yogunluk_kg_m3 = (float) ($r['yogunluk_kg_m3'] ?? 0);
+        if ($kod !== '' && $yogunluk_kg_m3 > 0) {
+            $hammadde_yogunluk_map[$kod] = $yogunluk_kg_m3;
+        }
+    }
+}
+
+$silo_karisim_map = [];
+$silo_toplam_kalan_kg = [];
+$karisim_sql = "SELECT 
+                    ssd.silo_id,
+                    COALESCE(h.hammadde_kodu, NULLIF(TRIM(ssd.hammadde_turu), ''), 'Bilinmeyen') AS hammadde_kodu,
+                    SUM(ssd.kalan_miktar_kg) AS kalan_kg
+                FROM silo_stok_detay ssd
+                LEFT JOIN hammadde_girisleri hg ON hg.parti_no = ssd.parti_kodu
+                LEFT JOIN hammaddeler h ON h.id = hg.hammadde_id
+                WHERE ssd.kalan_miktar_kg > 0
+                GROUP BY ssd.silo_id, COALESCE(h.hammadde_kodu, NULLIF(TRIM(ssd.hammadde_turu), ''), 'Bilinmeyen')
+                ORDER BY ssd.silo_id, kalan_kg DESC";
+$karisim_result = $baglanti->query($karisim_sql);
+
+if ($karisim_result) {
+    while ($k = $karisim_result->fetch_assoc()) {
+        $silo_id = (int) ($k['silo_id'] ?? 0);
+        $hammadde_kodu = trim((string) ($k['hammadde_kodu'] ?? 'Bilinmeyen'));
+        $kalan_kg = (float) ($k['kalan_kg'] ?? 0);
+
+        if ($silo_id <= 0 || $kalan_kg <= 0) {
+            continue;
+        }
+
+        if ($hammadde_kodu === '') {
+            $hammadde_kodu = 'Bilinmeyen';
+        }
+
+        if (!isset($silo_karisim_map[$silo_id])) {
+            $silo_karisim_map[$silo_id] = [];
+        }
+
+        $silo_karisim_map[$silo_id][] = [
+            'hammadde_kodu' => $hammadde_kodu,
+            'kalan_kg' => $kalan_kg
+        ];
+        $silo_toplam_kalan_kg[$silo_id] = ($silo_toplam_kalan_kg[$silo_id] ?? 0) + $kalan_kg;
     }
 }
 
@@ -231,12 +339,39 @@ if ($h_result) {
                 if ($val['data'] && $val['data']->num_rows > 0) {
                     while ($row = $val['data']->fetch_assoc()) {
                         // Veri temizliği (null check)
-                        $yogunluk = (float) ($row['yogunluk'] ?? 0.6);
                         $cap_m3 = (float) ($row['kapasite_m3'] ?? 0);
                         $dol_m3 = (float) ($row['doluluk_m3'] ?? 0);
+                        $bos_m3 = max(0, $cap_m3 - $dol_m3);
                         $durum = htmlspecialchars($row['durum'] ?? 'aktif');
                         $silo_adi = htmlspecialchars($row['silo_adi'] ?? '');
-                        $aktif_kod = htmlspecialchars($row['aktif_hammadde_kodu'] ?? '');
+                        $aktif_kod_raw = trim((string) ($row['aktif_hammadde_kodu'] ?? ''));
+                        $aktif_kod = htmlspecialchars($aktif_kod_raw);
+                        $silo_id = (int) ($row['id'] ?? 0);
+
+                        $izinli_kodlar = [];
+                        if (!empty($row['izin_verilen_hammadde_kodlari'])) {
+                            $tmp = json_decode((string) $row['izin_verilen_hammadde_kodlari'], true);
+                            if (is_array($tmp)) {
+                                $izinli_kodlar = normalizeKodList($tmp);
+                            }
+                        }
+                        $izinli_metin = !empty($izinli_kodlar) ? htmlspecialchars(implode(', ', $izinli_kodlar)) : 'Kisit yok';
+                        $izinli_alert = !empty($izinli_kodlar) ? 'alert-warning' : 'alert-light';
+                        $karisimlar = $silo_karisim_map[$silo_id] ?? [];
+                        $toplam_kalan_kg = (float) ($silo_toplam_kalan_kg[$silo_id] ?? 0);
+                        $toplam_kalan_ton = $toplam_kalan_kg / 1000;
+
+                        $varsayilan_yogunluk_kg_m3 = 780.0;
+                        $aktif_yogunluk_kg_m3 = (float) ($hammadde_yogunluk_map[$aktif_kod_raw] ?? 0);
+                        if ($dol_m3 > 0 && $toplam_kalan_kg > 0) {
+                            $tahmini_yogunluk_kg_m3 = $toplam_kalan_kg / $dol_m3;
+                        } elseif ($aktif_yogunluk_kg_m3 > 0) {
+                            $tahmini_yogunluk_kg_m3 = $aktif_yogunluk_kg_m3;
+                        } else {
+                            $tahmini_yogunluk_kg_m3 = $varsayilan_yogunluk_kg_m3;
+                        }
+                        $kapasite_tahmini_ton = ($cap_m3 * $tahmini_yogunluk_kg_m3) / 1000;
+                        $bos_alan_tahmini_ton = ($bos_m3 * $tahmini_yogunluk_kg_m3) / 1000;
 
                         $yuzde = ($cap_m3 > 0) ? ($dol_m3 / $cap_m3) * 100 : 0;
                         $renk = siloDolulukRenk($yuzde);
@@ -254,6 +389,21 @@ if ($h_result) {
 
                         // Durum Badge Rengi
                         $durum_badge = ($durum == 'aktif') ? 'bg-success' : (($durum == 'bakim') ? 'bg-warning' : 'bg-secondary');
+
+                        $karisim_html = "<small class='text-muted'>Aktif stok kaydi yok</small>";
+                        if (!empty($karisimlar) && $toplam_kalan_kg > 0) {
+                            $karisim_html = "<ul class='list-group list-group-flush small'>";
+                            foreach ($karisimlar as $k) {
+                                $kodu = htmlspecialchars((string) ($k['hammadde_kodu'] ?? 'Bilinmeyen'));
+                                $kalan = (float) ($k['kalan_kg'] ?? 0);
+                                $oran = ($toplam_kalan_kg > 0) ? ($kalan / $toplam_kalan_kg) * 100 : 0;
+                                $karisim_html .= "<li class='list-group-item d-flex justify-content-between px-0 py-1'>
+                                                    <span><strong>$kodu</strong> %" . sayiFormat($oran, 1) . "</span>
+                                                    <span>" . sayiFormat($kalan, 0) . " kg</span>
+                                                  </li>";
+                            }
+                            $karisim_html .= "</ul>";
+                        }
 
                         echo "
                     <div class='col-md-6 col-lg-4 mb-4'>
@@ -274,16 +424,16 @@ if ($h_result) {
                                     <div class='col-8'>
                                         <ul class='list-group list-group-flush small'>
                                             <li class='list-group-item d-flex justify-content-between px-0'>
-                                                <span><i class='fas fa-cube text-muted'></i> Hacim:</span>
-                                                <strong>" . sayiFormat($dol_m3, 1) . " m³</strong>
+                                                <span><i class='fas fa-cube text-muted'></i> Doluluk:</span>
+                                                <strong>" . sayiFormat($dol_m3, 1) . " m3 / " . sayiFormat($toplam_kalan_ton, 2) . " ton</strong>
                                             </li>
                                             <li class='list-group-item d-flex justify-content-between px-0 text-primary'>
-                                                <span><i class='fas fa-weight-hanging'></i> Tonaj:</span>
-                                                <strong>" . sayiFormat($dol_m3 * $yogunluk, 2) . " Ton</strong>
+                                                <span><i class='fas fa-database'></i> Kapasite:</span>
+                                                <strong>" . sayiFormat($cap_m3, 1) . " m3 / " . sayiFormat($kapasite_tahmini_ton, 2) . " ton (tah.)</strong>
                                             </li>
                                             <li class='list-group-item d-flex justify-content-between px-0 text-muted'>
-                                                <span>Mak:</span>
-                                                <span>" . sayiFormat($cap_m3 * $yogunluk, 0) . " Ton</span>
+                                                <span>Bos Alan:</span>
+                                                <span>" . sayiFormat($bos_m3, 1) . " m3 / " . sayiFormat($bos_alan_tahmini_ton, 2) . " ton (tah.)</span>
                                             </li>
                                         </ul>
                                     </div>
@@ -291,6 +441,15 @@ if ($h_result) {
                                 
                                 <div class='alert alert-light py-1 px-2 mb-2 text-center border'>
                                     <small>" . ($aktif_kod ? "<strong>$aktif_kod</strong>" : "Boş") . "</small>
+                                </div>
+
+                                <div class='alert $izinli_alert py-1 px-2 mb-2 border'>
+                                    <small><strong>Sadece Bunlar Girebilir:</strong> $izinli_metin</small>
+                                </div>
+
+                                <div class='border rounded p-2 mb-2 bg-light-subtle'>
+                                    <div class='small fw-semibold text-muted mb-1'>Silo Karisimi (kalan kg / oran)</div>
+                                    $karisim_html
                                 </div>
 
                                 <div class='d-grid gap-2 d-md-flex justify-content-md-end'>
@@ -343,10 +502,22 @@ if ($h_result) {
                         </select>
                     </div>
                     <div class="row">
-                        <div class="col-6"><label>Kapasite (m³)</label><input type="number" step="0.1"
+                        <div class="col-12"><label>Kapasite (m3)</label><input type="number" step="0.1"
                                 name="kapasite_m3" class="form-control" required></div>
-                        <div class="col-6"><label>Yoğunluk</label><input type="number" step="0.001" name="yogunluk"
-                                class="form-control" value="0.6"></div>
+                    </div>
+                    <div class="mb-2">
+                        <label>Sadece Bunlar Girebilir (istege bagli):</label>
+                        <div class="border rounded p-2 bg-light" style="height:140px; overflow-y:auto;">
+                            <?php foreach ($hammadde_listesi as $h) { ?>
+                                <div class="form-check">
+                                    <input type="checkbox" name="yeni_izinli_kodlar[]"
+                                        value="<?php echo $h['hammadde_kodu']; ?>"
+                                        id="new_chk_<?php echo $h['hammadde_kodu']; ?>" class="form-check-input">
+                                    <label class="form-check-label small"
+                                        for="new_chk_<?php echo $h['hammadde_kodu']; ?>"><?php echo $h['hammadde_kodu']; ?></label>
+                                </div>
+                            <?php } ?>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer"><button type="submit" name="silo_ekle" class="btn btn-success">Ekle</button>
@@ -371,10 +542,8 @@ if ($h_result) {
                             <div class="mb-3"><label>Adı</label><input type="text" name="silo_adi" id="edit_adi"
                                     class="form-control" required></div>
                             <div class="row mb-3">
-                                <div class="col-6"><label>m³</label><input type="number" step="0.1" name="kapasite_m3"
+                                <div class="col-12"><label>m3</label><input type="number" step="0.1" name="kapasite_m3"
                                         id="edit_kapasite" class="form-control"></div>
-                                <div class="col-6"><label>Yoğunluk</label><input type="number" step="0.001"
-                                        name="yogunluk" id="edit_yogunluk" class="form-control"></div>
                             </div>
                             <div class="mb-3"><label>Durum</label>
                                 <select name="durum" id="edit_durum" class="form-select">
@@ -483,7 +652,6 @@ if ($h_result) {
             document.getElementById('edit_id').value = data.id || '';
             document.getElementById('edit_adi').value = data.silo_adi || '';
             document.getElementById('edit_kapasite').value = data.kapasite_m3 || '';
-            document.getElementById('edit_yogunluk').value = data.yogunluk || 0.6;
             document.getElementById('edit_durum').value = data.durum || 'aktif';
             document.getElementById('edit_aktif_kod').value = data.aktif_hammadde_kodu || '';
 
