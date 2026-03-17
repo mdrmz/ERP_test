@@ -23,6 +23,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$yazma_yetkisi) {
 
 $mesaj = "";
 $hata = "";
+$aktif_user_id = (int) ($_SESSION['user_id'] ?? 0);
+$is_patron = (($_SESSION['rol_adi'] ?? '') === 'Patron') || ((int) ($_SESSION['rol_id'] ?? 0) === 1);
+
+if (!function_exists('hammaddeIzlenebilirlikDurum')) {
+    function hammaddeIzlenebilirlikDurum($row)
+    {
+        $asama = trim((string) ($row['olay_asamasi'] ?? ''));
+        $onay_durum = trim((string) ($row['onay_durum_akis'] ?? ($row['onay_durum'] ?? '')));
+        $silo_dagitim_var = ((int) ($row['silo_dagitim_var'] ?? 0)) > 0;
+        $silo_kalan_kg = (float) ($row['silo_kalan_kg_toplam'] ?? 0);
+
+        $durum_kodu = 'onay_merkezinde';
+        $durum_metin = 'Onay Merkezinde';
+        $badge_class = 'bg-secondary';
+        $icon = 'fa-hourglass-half';
+
+        if (in_array($onay_durum, ['reddedildi', 'satinalma_red'], true) || $asama === 'reddedildi') {
+            $durum_kodu = 'reddedildi';
+            $durum_metin = 'Reddedildi';
+            $badge_class = 'bg-danger';
+            $icon = 'fa-ban';
+        } elseif ($silo_dagitim_var) {
+            if ($silo_kalan_kg > 0.01) {
+                $durum_kodu = 'siloda';
+                $durum_metin = 'Siloda';
+                $badge_class = 'bg-success';
+                $icon = 'fa-warehouse';
+            } else {
+                $durum_kodu = 'tamamlandi';
+                $durum_metin = 'Tamamlandı';
+                $badge_class = 'bg-dark';
+                $icon = 'fa-check-double';
+            }
+        } elseif ($asama === 'tamamlandi' && $onay_durum === 'onaylandi') {
+            $durum_kodu = 'silo_aktarma_bekleniyor';
+            $durum_metin = 'Silo Aktarma Bekleniyor';
+            $badge_class = 'bg-warning text-dark';
+            $icon = 'fa-right-left';
+        } elseif (in_array($asama, ['satina_bekliyor', 'onaylandi'], true)) {
+            $durum_kodu = 'satin_alimda';
+            $durum_metin = 'Satın Alımda';
+            $badge_class = 'bg-primary';
+            $icon = 'fa-cart-shopping';
+        }
+
+        return [
+            'kod' => $durum_kodu,
+            'etiket' => $durum_metin,
+            'badge_class' => $badge_class,
+            'icon' => $icon,
+            'can_transfer' => ($durum_kodu === 'silo_aktarma_bekleniyor'),
+            'is_locked' => in_array($durum_kodu, ['siloda', 'tamamlandi'], true)
+        ];
+    }
+}
+
+if (!function_exists('hammaddeYogunlukHesapla')) {
+    function hammaddeYogunlukHesapla($hektolitre, $lab_hektolitre, $varsayilan_yogunluk)
+    {
+        $hektolitre = (float) $hektolitre;
+        $lab_hektolitre = (float) $lab_hektolitre;
+        $varsayilan_yogunluk = (float) $varsayilan_yogunluk;
+
+        if ($hektolitre > 0) {
+            return $hektolitre * 10;
+        }
+        if ($lab_hektolitre > 0) {
+            return $lab_hektolitre * 10;
+        }
+        if ($varsayilan_yogunluk > 0) {
+            return $varsayilan_yogunluk;
+        }
+        return 780.0;
+    }
+}
+
+$duzeltme_tablo_var = false;
+$duzeltme_tablo_kontrol = @$baglanti->query("SHOW TABLES LIKE 'silo_duzeltme_talepleri'");
+if ($duzeltme_tablo_kontrol && $duzeltme_tablo_kontrol->num_rows > 0) {
+    $duzeltme_tablo_var = true;
+}
 
 // YENİ HAMMADDE EKLEME
 if (isset($_POST["hammadde_ekle"])) {
@@ -60,17 +141,169 @@ if (isset($_GET['kantar']) && $_GET['kantar'] == 'ok') {
 }
 
 // KANTAR GÜNCELLEMESİ (Düzenleme Modalından)
+// SILO DUZELTME TALEBI - OLUSTUR
+if (isset($_POST['silo_duzeltme_talep_olustur'])) {
+    $giris_id = (int) ($_POST['giris_id'] ?? 0);
+    $talep_nedeni = trim((string) ($_POST['talep_nedeni'] ?? ''));
+
+    if (!$duzeltme_tablo_var) {
+        $hata = "Silo duzeltme talep tablosu bulunamadi. SQL guncellemesi gerekli.";
+    } elseif ($giris_id <= 0) {
+        $hata = "Gecersiz hammadde girisi.";
+    } elseif ($talep_nedeni === '') {
+        $hata = "Talep nedeni bos olamaz.";
+    } else {
+        $detay_sql = "
+            SELECT hg.id, hg.parti_no, hg.arac_plaka, h.hammadde_kodu,
+                   COALESCE(ssd_ozet.kayit_sayisi, 0) AS silo_kayit_sayisi
+            FROM hammadde_girisleri hg
+            LEFT JOIN hammaddeler h ON h.id = hg.hammadde_id
+            LEFT JOIN (
+                SELECT parti_kodu, COUNT(*) AS kayit_sayisi
+                FROM silo_stok_detay
+                GROUP BY parti_kodu
+            ) ssd_ozet ON ssd_ozet.parti_kodu = hg.parti_no
+            WHERE hg.id = $giris_id
+            LIMIT 1
+        ";
+        $detay_res = $baglanti->query($detay_sql);
+        $detay = $detay_res ? $detay_res->fetch_assoc() : null;
+
+        if (!$detay) {
+            $hata = "Kayit bulunamadi.";
+        } elseif ((int) ($detay['silo_kayit_sayisi'] ?? 0) <= 0) {
+                        $hata = "Bu kayıt için silo aktarımı tamamlanmamış. Talep açılamaz.";
+        } else {
+            $acik_kontrol = $baglanti->query("SELECT id FROM silo_duzeltme_talepleri WHERE hammadde_giris_id = $giris_id AND durum IN ('bekliyor', 'onaylandi') LIMIT 1");
+            if ($acik_kontrol && $acik_kontrol->num_rows > 0) {
+                $hata = "Bu kayit icin acik bir duzeltme talebi zaten var.";
+            } else {
+                $parti_no_esc = $baglanti->real_escape_string((string) ($detay['parti_no'] ?? ''));
+                $talep_nedeni_esc = $baglanti->real_escape_string($talep_nedeni);
+                $insert_sql = "INSERT INTO silo_duzeltme_talepleri (hammadde_giris_id, parti_no, talep_nedeni, talep_eden_user_id, durum, created_at, updated_at) 
+                               VALUES ($giris_id, '$parti_no_esc', '$talep_nedeni_esc', $aktif_user_id, 'bekliyor', NOW(), NOW())";
+                if ($baglanti->query($insert_sql)) {
+                    $talep_id = (int) $baglanti->insert_id;
+                    $plaka = (string) ($detay['arac_plaka'] ?? '-');
+                    $hammadde_kodu = (string) ($detay['hammadde_kodu'] ?? '-');
+
+                    if (function_exists('bildirimOlustur')) {
+                        $baslik = "Silo Duzeltme Talebi: {$parti_no_esc}";
+                        $aciklama = "Parti: {$parti_no_esc} | Plaka: {$plaka} | Hammadde: {$hammadde_kodu} | Talep Eden User ID: {$aktif_user_id}";
+                        bildirimOlustur(
+                            $baglanti,
+                            'silo_duzeltme_talebi',
+                            $baslik,
+                            $aciklama,
+                            1,
+                            null,
+                            'silo_duzeltme_talepleri',
+                            $talep_id,
+                            'hammadde.php?tab=duzeltme_talepleri'
+                        );
+                    }
+
+                    $mesaj = "Silo düzeltme talebi oluşturuldu.";
+                } else {
+                    $hata = "Talep kaydedilemedi: " . $baglanti->error;
+                }
+            }
+        }
+    }
+}
+
+// SILO DUZELTME TALEBI - KARAR (PATRON)
+if (isset($_POST['silo_duzeltme_talep_karar'])) {
+    $talep_id = (int) ($_POST['talep_id'] ?? 0);
+    $karar = trim((string) ($_POST['karar'] ?? ''));
+    $karar_notu = trim((string) ($_POST['karar_notu'] ?? ''));
+
+    if (!$duzeltme_tablo_var) {
+        $hata = "Silo duzeltme talep tablosu bulunamadi.";
+    } elseif (!$is_patron) {
+        $hata = "Bu islem sadece Patron tarafindan yapilabilir.";
+    } elseif ($talep_id <= 0 || !in_array($karar, ['onayla', 'reddet'], true)) {
+        $hata = "Gecersiz talep karari.";
+    } else {
+        $talep_res = $baglanti->query("
+            SELECT sdt.*, hg.arac_plaka, h.hammadde_kodu
+            FROM silo_duzeltme_talepleri sdt
+            LEFT JOIN hammadde_girisleri hg ON hg.id = sdt.hammadde_giris_id
+            LEFT JOIN hammaddeler h ON h.id = hg.hammadde_id
+            WHERE sdt.id = $talep_id
+            LIMIT 1
+        ");
+        $talep = $talep_res ? $talep_res->fetch_assoc() : null;
+
+        if (!$talep) {
+            $hata = "Talep bulunamadi.";
+        } elseif (($talep['durum'] ?? '') !== 'bekliyor') {
+            $hata = "Bu talep icin karar verilemez. Mevcut durum: " . ($talep['durum'] ?? '-');
+        } else {
+            $yeni_durum = ($karar === 'onayla') ? 'onaylandi' : 'reddedildi';
+            $karar_notu_esc = $baglanti->real_escape_string($karar_notu);
+            $update_sql = "UPDATE silo_duzeltme_talepleri 
+                           SET durum = '$yeni_durum',
+                               karar_veren_user_id = $aktif_user_id,
+                               karar_notu = '$karar_notu_esc',
+                               onay_tarihi = NOW(),
+                               updated_at = NOW()
+                           WHERE id = $talep_id";
+
+            if ($baglanti->query($update_sql)) {
+                if (function_exists('bildirimOlustur')) {
+                    $parti_no = (string) ($talep['parti_no'] ?? '-');
+                    $plaka = (string) ($talep['arac_plaka'] ?? '-');
+                    $hammadde_kodu = (string) ($talep['hammadde_kodu'] ?? '-');
+                    $hedef_user = (int) ($talep['talep_eden_user_id'] ?? 0);
+                    $tip = ($yeni_durum === 'onaylandi') ? 'silo_duzeltme_onay' : 'silo_duzeltme_red';
+                    $baslik = ($yeni_durum === 'onaylandi')
+                        ? "Silo Duzeltme Talebiniz Onaylandi: {$parti_no}"
+                        : "Silo Duzeltme Talebiniz Reddedildi: {$parti_no}";
+                    $aciklama = "Parti: {$parti_no} | Plaka: {$plaka} | Hammadde: {$hammadde_kodu}" . ($karar_notu !== '' ? " | Not: {$karar_notu}" : '');
+                    if ($hedef_user > 0) {
+                        bildirimOlustur(
+                            $baglanti,
+                            $tip,
+                            $baslik,
+                            $aciklama,
+                            null,
+                            $hedef_user,
+                            'silo_duzeltme_talepleri',
+                            $talep_id,
+                            'hammadde.php?tab=duzeltme_talepleri'
+                        );
+                    }
+                }
+
+                $mesaj = ($yeni_durum === 'onaylandi') ? "Talep onaylandı." : "Talep reddedildi.";
+            } else {
+                $hata = "Talep karari kaydedilemedi: " . $baglanti->error;
+            }
+        }
+    }
+}
+
+// SILO DUZELTME TALEBI - UYGULA adımı kaldırıldı
+if (isset($_POST['silo_duzeltme_talep_uygula'])) {
+    $hata = "Bu adım kaldırıldı. Talep onaylandıktan sonra düzeltmeyi İzlenebilirlik sekmesinden yapın.";
+}
+
 if (isset($_POST["kantar_guncelle"])) {
     $giris_id = (int) ($_POST["giris_id"] ?? 0);
+    $patron_duzeltme = ((int) ($_POST["patron_duzeltme"] ?? 0) === 1) && $is_patron;
+    $onayli_duzeltme_talep_id = 0;
 
     $dagitim_silo_ids = $_POST['dagitim_silo_id'] ?? [];
     $dagitim_kgs = $_POST['dagitim_kg'] ?? [];
+    $eski_stoklari_temizle = false;
+    $eski_stok_ozet = [];
 
     if ($giris_id <= 0) {
         $hata = "Geçersiz giriş kaydı.";
     } else {
         $mevcut_sql = "
-            SELECT hg.*, h.yogunluk_kg_m3, h.hammadde_kodu, h.ad as hammadde_adi, hka.kantar_net_kg,
+            SELECT hg.*, h.yogunluk_kg_m3, h.hammadde_kodu, h.ad as hammadde_adi, hka.kantar_net_kg, hka.asama as akis_asama, hka.onay_durum as akis_onay_durum,
                    (SELECT la.hektolitre FROM lab_analizleri la WHERE la.hammadde_giris_id = hg.id ORDER BY la.id DESC LIMIT 1) as lab_hektolitre
             FROM hammadde_girisleri hg
             LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id
@@ -108,6 +341,7 @@ if (isset($_POST["kantar_guncelle"])) {
             if ($referans_kg <= 0) {
                 $hata = "Satınalma kantar değeri bulunamadı. Önce satınalma tarafında net KG onaylanmalıdır.";
             }
+
         }
     }
 
@@ -159,9 +393,65 @@ if (isset($_POST["kantar_guncelle"])) {
 
     if (empty($hata)) {
         $parti_kodu_esc = $baglanti->real_escape_string($mevcut['parti_no']);
-        $kilit_kontrol = $baglanti->query("SELECT id FROM silo_stok_detay WHERE parti_kodu = '$parti_kodu_esc' LIMIT 1");
-        if ($kilit_kontrol && $kilit_kontrol->num_rows > 0) {
-            $hata = "Bu parti için daha önce silo dağıtımı yapılmış. Aynı parti ikinci kez dağıtılamaz.";
+        $kilit_kontrol = $baglanti->query("SELECT COUNT(*) AS adet FROM silo_stok_detay WHERE parti_kodu = '$parti_kodu_esc'");
+        $kilit_adet = 0;
+        if ($kilit_kontrol && ($kilit_row = $kilit_kontrol->fetch_assoc())) {
+            $kilit_adet = (int) ($kilit_row['adet'] ?? 0);
+        }
+
+        if ($kilit_adet > 0) {
+            $duzeltme_yetkili = false;
+            if ($patron_duzeltme) {
+                $duzeltme_yetkili = true;
+            } elseif ($duzeltme_tablo_var) {
+                $talep_kontrol_sql = "SELECT id FROM silo_duzeltme_talepleri 
+                                      WHERE hammadde_giris_id = $giris_id 
+                                        AND talep_eden_user_id = $aktif_user_id 
+                                        AND durum = 'onaylandi'
+                                      ORDER BY id DESC LIMIT 1";
+                $talep_kontrol_res = $baglanti->query($talep_kontrol_sql);
+                if ($talep_kontrol_res && ($talep_row = $talep_kontrol_res->fetch_assoc())) {
+                    $onayli_duzeltme_talep_id = (int) ($talep_row['id'] ?? 0);
+                    if ($onayli_duzeltme_talep_id > 0) {
+                        $duzeltme_yetkili = true;
+                    }
+                }
+            }
+
+            if (!$duzeltme_yetkili) {
+                $hata = "Bu parti için daha önce silo dağıtımı yapılmış. Aynı parti ikinci kez dağıtılamaz.";
+            } else {
+                $cikis_kontrol = $baglanti->query("SELECT COUNT(*) AS adet FROM uretim_silo_cikis_log WHERE kaynak_parti_kodu = '$parti_kodu_esc'");
+                $cikis_adet = 0;
+                if ($cikis_kontrol && ($cikis_row = $cikis_kontrol->fetch_assoc())) {
+                    $cikis_adet = (int) ($cikis_row['adet'] ?? 0);
+                }
+
+                if ($cikis_adet > 0) {
+                    $hata = "Bu parti için üretim çıkışı başladığı için düzeltme yapılamaz.";
+                } else {
+                    $eski_stok_res = $baglanti->query("SELECT silo_id, SUM(giren_miktar_kg) AS toplam_giren_kg FROM silo_stok_detay WHERE parti_kodu = '$parti_kodu_esc' GROUP BY silo_id");
+                    if ($eski_stok_res) {
+                        while ($eski = $eski_stok_res->fetch_assoc()) {
+                            $eski_stok_ozet[] = [
+                                'silo_id' => (int) ($eski['silo_id'] ?? 0),
+                                'toplam_giren_kg' => (float) ($eski['toplam_giren_kg'] ?? 0),
+                            ];
+                        }
+                    }
+                    $eski_stoklari_temizle = true;
+                }
+            }
+        } else {
+            if ($patron_duzeltme) {
+                $hata = "Patron düzeltmesi için mevcut bir silo dağıtımı bulunmalıdır.";
+            } else {
+                $akis_asama = strtolower(trim((string) ($mevcut['akis_asama'] ?? '')));
+                $akis_onay = strtolower(trim((string) ($mevcut['akis_onay_durum'] ?? '')));
+                if ($akis_asama !== 'tamamlandi' || $akis_onay !== 'onaylandi') {
+                    $hata = "Bu kayıt henüz silo aktarma bekleniyor aşamasında değil.";
+                }
+            }
         }
     }
 
@@ -224,6 +514,27 @@ if (isset($_POST["kantar_guncelle"])) {
             $islem_hatasi = "Hammadde girişi güncellenemedi: " . $baglanti->error;
         }
 
+        if (empty($islem_hatasi) && $eski_stoklari_temizle) {
+            foreach ($eski_stok_ozet as $eski_stok) {
+                $eski_silo_id = (int) ($eski_stok['silo_id'] ?? 0);
+                $eski_kg = (float) ($eski_stok['toplam_giren_kg'] ?? 0);
+                if ($eski_silo_id <= 0 || $eski_kg <= 0) {
+                    continue;
+                }
+
+                $azaltim_m3 = $eski_kg / $yogunluk;
+                $sql_eski_doluluk = "UPDATE silolar SET doluluk_m3 = GREATEST(0, doluluk_m3 - $azaltim_m3) WHERE id = $eski_silo_id";
+                if (!$baglanti->query($sql_eski_doluluk)) {
+                    $islem_hatasi = "Eski silo doluluğu geri alınamadı: " . $baglanti->error;
+                    break;
+                }
+            }
+
+            if (empty($islem_hatasi) && !$baglanti->query("DELETE FROM silo_stok_detay WHERE parti_kodu = '$parti_kodu'")) {
+                $islem_hatasi = "Eski silo stok detayları temizlenemedi: " . $baglanti->error;
+            }
+        }
+
         if (empty($islem_hatasi)) {
             foreach ($dagitimlar as $s_id => $a_kg) {
                 $fifo_sql = "INSERT INTO silo_stok_detay (silo_id, parti_kodu, hammadde_turu, giren_miktar_kg, kalan_miktar_kg, giris_tarihi, durum) VALUES ($s_id, '$parti_kodu', '$hammadde_turu', $a_kg, $a_kg, NOW(), 'aktif')";
@@ -237,6 +548,15 @@ if (isset($_POST["kantar_guncelle"])) {
                     $islem_hatasi = "Silo doluluğu güncellenemedi: " . $baglanti->error;
                     break;
                 }
+            }
+        }
+
+        if (empty($islem_hatasi) && $onayli_duzeltme_talep_id > 0 && $duzeltme_tablo_var) {
+            $talep_kapat_sql = "UPDATE silo_duzeltme_talepleri 
+                                SET durum = 'uygulandi', uygulama_tarihi = NOW(), updated_at = NOW()
+                                WHERE id = $onayli_duzeltme_talep_id";
+            if (!$baglanti->query($talep_kapat_sql)) {
+                $islem_hatasi = "Düzeltme talebi durumu güncellenemedi: " . $baglanti->error;
             }
         }
 
@@ -395,6 +715,7 @@ $filtre_bitis = $_GET['f_bitis'] ?? '';
 $filtre_hammadde = $_GET['f_hammadde'] ?? '';
 $filtre_tedarikci = $_GET['f_tedarikci'] ?? '';
 $filtre_plaka = $_GET['f_plaka'] ?? '';
+$aktif_tab = $_GET['tab'] ?? 'izlenebilirlik';
 
 // Filtre SQL eklentileri
 $sql_filtre = "WHERE 1=1";
@@ -417,14 +738,72 @@ if (!empty($filtre_plaka)) {
     $sql_filtre .= " AND hg.arac_plaka LIKE '%" . $baglanti->real_escape_string($filtre_plaka) . "%'";
 }
 
-$sql_gecmis = "SELECT hg.*, s.silo_adi, h.ad as urun_adi, h.hammadde_kodu, h.yogunluk_kg_m3 as hammadde_yogunluk, hg.giris_m3 as hesaplanan_m3,
-               la.hektolitre as lab_hektolitre, la.nem as lab_nem, la.protein as lab_protein, la.nisasta as lab_nisasta, la.sertlik as lab_sertlik,
-               hka.asama as olay_asamasi, hka.kantar_net_kg as referans_kantar_kg
+$duzeltme_select_gecmis = ", 0 AS duzeltme_onayli_talep_id";
+$duzeltme_join_gecmis = "";
+if ($duzeltme_tablo_var) {
+    $duzeltme_select_gecmis = ", COALESCE(sdt_ozet.onayli_talep_id_bana, 0) AS duzeltme_onayli_talep_id";
+    $duzeltme_join_gecmis = "LEFT JOIN (
+                    SELECT hammadde_giris_id,
+                           MAX(CASE WHEN durum = 'onaylandi' AND talep_eden_user_id = $aktif_user_id THEN id ELSE 0 END) AS onayli_talep_id_bana
+                    FROM silo_duzeltme_talepleri
+                    GROUP BY hammadde_giris_id
+               ) sdt_ozet ON sdt_ozet.hammadde_giris_id = hg.id";
+}
+
+$sql_gecmis = "SELECT 
+                hg.*,
+                s.silo_adi,
+                h.ad as urun_adi,
+                h.hammadde_kodu,
+                h.yogunluk_kg_m3 as hammadde_yogunluk,
+                hg.giris_m3 as hesaplanan_m3,
+                la.hektolitre as lab_hektolitre,
+                la.nem as lab_nem,
+                la.protein as lab_protein,
+                la.nisasta as lab_nisasta,
+                la.sertlik as lab_sertlik,
+                hka.asama as olay_asamasi,
+                hka.onay_durum as onay_durum_akis,
+                hka.kantar_net_kg as referans_kantar_kg,
+                COALESCE(ssd_ozet.dagitim_kayit_sayisi, 0) as silo_dagitim_var,
+                COALESCE(ssd_ozet.toplam_kalan_kg, 0) as silo_kalan_kg_toplam,
+                COALESCE(usc_ozet.cikis_log_sayisi, 0) as uretim_cikis_sayisi
+                $duzeltme_select_gecmis
                FROM hammadde_girisleri hg 
                LEFT JOIN silolar s ON hg.silo_id = s.id 
                LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id 
-               LEFT JOIN lab_analizleri la ON hg.id = la.hammadde_giris_id
-               LEFT JOIN hammadde_kabul_akisi hka ON hg.id = hka.hammadde_giris_id
+               LEFT JOIN (
+                    SELECT la1.*
+                    FROM lab_analizleri la1
+                    INNER JOIN (
+                        SELECT hammadde_giris_id, MAX(id) AS max_id
+                        FROM lab_analizleri
+                        GROUP BY hammadde_giris_id
+                    ) la_max ON la_max.max_id = la1.id
+               ) la ON la.hammadde_giris_id = hg.id
+               LEFT JOIN (
+                    SELECT hka1.*
+                    FROM hammadde_kabul_akisi hka1
+                    INNER JOIN (
+                        SELECT hammadde_giris_id, MAX(id) AS max_id
+                        FROM hammadde_kabul_akisi
+                        GROUP BY hammadde_giris_id
+                    ) hka_max ON hka_max.max_id = hka1.id
+               ) hka ON hka.hammadde_giris_id = hg.id
+               LEFT JOIN (
+                    SELECT parti_kodu,
+                           COUNT(*) AS dagitim_kayit_sayisi,
+                           SUM(kalan_miktar_kg) AS toplam_kalan_kg
+                    FROM silo_stok_detay
+                    GROUP BY parti_kodu
+               ) ssd_ozet ON ssd_ozet.parti_kodu = hg.parti_no
+               LEFT JOIN (
+                    SELECT kaynak_parti_kodu AS parti_kodu,
+                           COUNT(*) AS cikis_log_sayisi
+                    FROM uretim_silo_cikis_log
+                    GROUP BY kaynak_parti_kodu
+               ) usc_ozet ON usc_ozet.parti_kodu = hg.parti_no
+               $duzeltme_join_gecmis
                $sql_filtre
                ORDER BY hg.tarih DESC LIMIT 500";
 
@@ -439,6 +818,35 @@ while ($h = $hammaddeler->fetch_assoc()) {
 }
 // selectler için geri sar
 $hammaddeler->data_seek(0);
+
+$duzeltme_talepleri = null;
+$duzeltme_talepleri_bekleyen_adet = 0;
+if ($duzeltme_tablo_var) {
+    $talep_where = $is_patron ? "1=1" : "sdt.talep_eden_user_id = $aktif_user_id";
+    $duzeltme_sql = "SELECT 
+                        sdt.*,
+                        hg.arac_plaka,
+                        hg.tedarikci,
+                        h.hammadde_kodu,
+                        h.ad AS hammadde_adi,
+                        ue.kadi AS talep_eden_kadi,
+                        uk.kadi AS karar_veren_kadi
+                     FROM silo_duzeltme_talepleri sdt
+                     LEFT JOIN hammadde_girisleri hg ON hg.id = sdt.hammadde_giris_id
+                     LEFT JOIN hammaddeler h ON h.id = hg.hammadde_id
+                     LEFT JOIN users ue ON ue.id = sdt.talep_eden_user_id
+                     LEFT JOIN users uk ON uk.id = sdt.karar_veren_user_id
+                     WHERE $talep_where
+                     ORDER BY sdt.created_at DESC
+                     LIMIT 300";
+    $duzeltme_talepleri = $baglanti->query($duzeltme_sql);
+
+    $bekleyen_sql = "SELECT COUNT(*) AS adet FROM silo_duzeltme_talepleri sdt WHERE sdt.durum = 'bekliyor'" . ($is_patron ? "" : " AND sdt.talep_eden_user_id = $aktif_user_id");
+    $bekleyen_res = $baglanti->query($bekleyen_sql);
+    if ($bekleyen_res && ($bekleyen_row = $bekleyen_res->fetch_assoc())) {
+        $duzeltme_talepleri_bekleyen_adet = (int) ($bekleyen_row['adet'] ?? 0);
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -746,6 +1154,27 @@ $hammaddeler->data_seek(0);
             <!-- Alt Kısım: İzlenebilirlik Tablosu (Tam Genişlik) -->
             <div class="col-12">
                 <div class="card shadow-sm mb-3">
+                    <div class="card-body py-2">
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <a href="hammadde.php?tab=izlenebilirlik"
+                                class="btn btn-sm <?php echo $aktif_tab === 'izlenebilirlik' ? 'btn-dark' : 'btn-outline-dark'; ?>">
+                                <i class="fas fa-stream me-1"></i> İzlenebilirlik
+                            </a>
+                            <?php if ($duzeltme_tablo_var): ?>
+                                <a href="hammadde.php?tab=duzeltme_talepleri"
+                                    class="btn btn-sm <?php echo $aktif_tab === 'duzeltme_talepleri' ? 'btn-warning' : 'btn-outline-warning'; ?>">
+                                    <i class="fas fa-rotate-left me-1"></i> Düzeltme Talepleri
+                                    <?php if ($duzeltme_talepleri_bekleyen_adet > 0): ?>
+                                        <span class="badge bg-dark ms-1"><?php echo $duzeltme_talepleri_bekleyen_adet; ?></span>
+                                    <?php endif; ?>
+                                </a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <?php if ($aktif_tab !== 'duzeltme_talepleri'): ?>
+                <div class="card shadow-sm mb-3">
                     <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Kayıtları Filtrele</h5>
                         <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="collapse"
@@ -759,6 +1188,7 @@ $hammaddeler->data_seek(0);
                         id="filterCollapse">
                         <div class="card-body bg-light border-bottom">
                             <form method="GET" action="hammadde.php" class="row g-3">
+                                <input type="hidden" name="tab" value="<?php echo htmlspecialchars($aktif_tab); ?>">
                                 <div class="col-md-3">
                                     <label class="form-label text-muted small fw-bold">Başlangıç Tarihi</label>
                                     <input type="date" name="f_baslangic" class="form-control form-control-sm"
@@ -826,24 +1256,17 @@ $hammaddeler->data_seek(0);
                                             <td><span class="badge bg-secondary"><?php echo $row["arac_plaka"]; ?></span></td>
                                             <td><small><?php echo htmlspecialchars($row["tedarikci"] ?? '-'); ?></small></td>
                                             <td>
+                                                <?php $durum_bilgi = hammaddeIzlenebilirlikDurum($row); ?>
                                                 <strong class="text-primary"><?php echo $row["urun_adi"]; ?></strong>
                                                 <?php if (!empty($row["parti_no"])) { ?>
                                                     <div class="small text-muted"><i
                                                             class="fas fa-barcode me-1"></i><?php echo $row["parti_no"]; ?></div>
-                                                <?php }
-                                                if (isset($row['olay_asamasi'])) {
-                                                    $bg_color = 'bg-secondary';
-                                                    if ($row['olay_asamasi'] === 'reddedildi')
-                                                        $bg_color = 'bg-danger';
-                                                    else if ($row['olay_asamasi'] === 'onay_bekleniyor')
-                                                        $bg_color = 'bg-warning text-dark';
-                                                    else if (in_array($row['olay_asamasi'], ['onaylandi', 'kantar', 'tamamlandi']))
-                                                        $bg_color = 'bg-success';
-
-                                                    $asama_metin = function_exists('asamaEtiket') ? asamaEtiket($row['olay_asamasi']) : $row['olay_asamasi'];
-                                                    echo "<div class='mt-1'><span class='badge $bg_color'>$asama_metin</span></div>";
-                                                }
-                                                ?>
+                                                <?php } ?>
+                                                <div class="mt-1">
+                                                    <span class="badge <?php echo $durum_bilgi['badge_class']; ?>">
+                                                        <i class="fas <?php echo $durum_bilgi['icon']; ?> me-1"></i><?php echo $durum_bilgi['etiket']; ?>
+                                                    </span>
+                                                </div>
                                             </td>
                                             <td><span
                                                     class="badge bg-light text-dark border"><?php echo $row["silo_adi"] ?: '-'; ?></span>
@@ -869,7 +1292,7 @@ $hammaddeler->data_seek(0);
                                                             <?php echo $row["lab_nem"] ?: '-'; ?> %</span>
                                                         <span class="badge badge-soft badge-soft-prot" title="Protein">P:
                                                             <?php echo $row["lab_protein"] ?: '-'; ?> %</span>
-                                                        <span class="badge badge-soft badge-soft-nis" title="Nişasta">NŞ:
+                                                        <span class="badge badge-soft badge-soft-nis" title="Nişasta">Niş:
                                                             <?php echo $row["lab_nisasta"] ?: '-'; ?> %</span>
                                                         <span class="badge badge-soft badge-soft-sert" title="Sertlik">S:
                                                             <?php echo $row["lab_sertlik"] ?: '-'; ?></span>
@@ -882,35 +1305,84 @@ $hammaddeler->data_seek(0);
                                             </td>
                                             <td class="text-center">
                                                 <?php
-                                                $kantar_bekliyor = ($row["miktar_kg"] == 0 || empty($row["miktar_kg"]));
-                                                $asamasi = $row['olay_asamasi'] ?? '';
-                                                // Kantar işlemi sadece Satınalma Onayından Geçen (onaylandi) veya hali hazırda kantarı yapılmış olanlar için aktiftir.
-                                                $kantar_aktif = ($asamasi === 'onaylandi' || $asamasi === 'kantar' || $asamasi === 'tamamlandi');
+                                                $can_transfer = (bool) ($durum_bilgi['can_transfer'] ?? false);
+                                                $is_locked = (bool) ($durum_bilgi['is_locked'] ?? false);
+                                                $durum_kodu = (string) ($durum_bilgi['kod'] ?? '');
+                                                $onayli_talep_ile_duzeltme = ($is_locked && !$is_patron && ((int) ($row['duzeltme_onayli_talep_id'] ?? 0) > 0));
+                                                $patron_direkt_duzeltme = ($is_locked && $is_patron);
+                                                $modal_aksiyon_aktif = ($can_transfer || $patron_direkt_duzeltme || $onayli_talep_ile_duzeltme);
 
-                                                if (!$kantar_aktif) {
-                                                    // Onay bekliyor veya analiz bekliyor ise buton disabled olsun
+                                                if ($can_transfer) {
+                                                    $buton_sinifi = 'btn-warning';
+                                                    $buton_title = 'Silo Aktarma';
+                                                    $buton_icon = 'fa-right-left';
+                                                    $buton_metin = 'Aktar';
+                                                } elseif ($onayli_talep_ile_duzeltme) {
+                                                    $buton_sinifi = 'btn-outline-warning';
+                                                    $buton_title = 'Onaylı Düzeltme';
+                                                    $buton_icon = 'fa-screwdriver-wrench';
+                                                    $buton_metin = 'Düzelt';
+                                                } elseif ($patron_direkt_duzeltme) {
+                                                    $buton_sinifi = 'btn-outline-primary';
+                                                    $buton_title = 'Patron Düzeltmesi';
+                                                    $buton_icon = 'fa-pen-to-square';
+                                                    $buton_metin = 'Düzelt';
+                                                } elseif ($is_locked) {
                                                     $buton_sinifi = 'btn-secondary disabled';
-                                                    $buton_title = 'Satınalma Onayı Bekleniyor';
+                                                    $buton_title = 'Silo aktarimi tamamlandi, kayit kilitli.';
+                                                    $buton_icon = 'fa-lock';
+                                                    $buton_metin = '';
+                                                } elseif ($durum_kodu === 'reddedildi') {
+                                                    $buton_sinifi = 'btn-secondary disabled';
+                                                    $buton_title = 'Reddedilen kayitta silo aktarimi yok.';
+                                                    $buton_icon = 'fa-ban';
+                                                    $buton_metin = '';
                                                 } else {
-                                                    $buton_sinifi = $kantar_bekliyor ? 'btn-warning' : 'btn-outline-primary';
-                                                    $buton_title = $kantar_bekliyor ? 'Kantar Girişi Bekliyor' : 'Düzenle';
+                                                    $buton_sinifi = 'btn-secondary disabled';
+                                                    $buton_title = 'Silo Aktarma Bekleniyor durumuna gelmesi gerekiyor.';
+                                                    $buton_icon = 'fa-clock';
+                                                    $buton_metin = '';
                                                 }
                                                 ?>
-                                                <button type="button"
-                                                    class="btn btn-sm <?php echo $buton_sinifi; ?>"
-                                                    <?php echo $kantar_aktif ? 'data-bs-toggle="modal" data-bs-target="#kantarModal"' : ''; ?>
-                                                    data-id="<?php echo $row['id']; ?>"
-                                                    data-plaka="<?php echo htmlspecialchars($row['arac_plaka']); ?>"
-                                                    data-tedarikci="<?php echo htmlspecialchars($row['tedarikci'] ?? ''); ?>"
-                                                    data-referans-kg="<?php echo (float) ($row['referans_kantar_kg'] ?? 0); ?>"
-                                                    data-hammadde-kodu="<?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
-                                                    data-yogunluk="<?php echo (float) ($row['hammadde_yogunluk'] ?? 780); ?>"
-                                                    title="<?php echo $buton_title; ?>">
-                                                    <i
-                                                        class="fas <?php echo $kantar_bekliyor ? 'fa-balance-scale' : 'fa-edit'; ?>"></i>
-                                                    <?php if ($kantar_bekliyor)
-                                                        echo '<small>Kantar</small>'; ?>
-                                                </button>
+                                                <div class="d-flex justify-content-center gap-1">
+                                                    <button type="button"
+                                                        class="btn btn-sm <?php echo $buton_sinifi; ?>"
+                                                        <?php echo $modal_aksiyon_aktif ? 'data-bs-toggle="modal" data-bs-target="#kantarModal"' : ''; ?>
+                                                        data-id="<?php echo $row['id']; ?>"
+                                                        data-plaka="<?php echo htmlspecialchars($row['arac_plaka']); ?>"
+                                                        data-tedarikci="<?php echo htmlspecialchars($row['tedarikci'] ?? ''); ?>"
+                                                        data-referans-kg="<?php echo (float) ($row['referans_kantar_kg'] ?? 0); ?>"
+                                                        data-hammadde-kodu="<?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
+                                                        data-yogunluk="<?php echo (float) ($row['hammadde_yogunluk'] ?? 780); ?>"
+                                                        data-patron-duzeltme="<?php echo $patron_direkt_duzeltme ? '1' : '0'; ?>"
+                                                        title="<?php echo $buton_title; ?>">
+                                                        <i class="fas <?php echo $buton_icon; ?>"></i>
+                                                        <?php if ($buton_metin !== ''): ?>
+                                                            <small class="ms-1"><?php echo $buton_metin; ?></small>
+                                                        <?php endif; ?>
+                                                    </button>
+
+                                                    <?php if ($is_locked && !$is_patron && !$onayli_talep_ile_duzeltme && $duzeltme_tablo_var): ?>
+                                                        <button type="button"
+                                                            class="btn btn-sm btn-outline-danger"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#duzeltmeTalepModal"
+                                                            data-giris-id="<?php echo (int) $row['id']; ?>"
+                                                            data-parti-no="<?php echo htmlspecialchars($row['parti_no'] ?? '', ENT_QUOTES); ?>"
+                                                            data-plaka="<?php echo htmlspecialchars($row['arac_plaka'] ?? '', ENT_QUOTES); ?>"
+                                                            data-hammadde-kodu="<?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
+                                                            title="Silo düzeltme talebi aç">
+                                                            <i class="fas fa-flag"></i>
+                                                        </button>
+                                                    <?php elseif ($is_locked && !$is_patron && !$duzeltme_tablo_var): ?>
+                                                        <button type="button"
+                                                            class="btn btn-sm btn-outline-secondary"
+                                                            onclick="Swal.fire({icon:'info',title:'Düzeltme talebi pasif',text:'Önce veritabanında silo_duzeltme_talepleri tablosunu oluşturmanız gerekiyor.'});"
+                                                            title="Düzeltme talebi için SQL güncellemesi gerekli">
+                                                            <i class="fas fa-flag"></i>
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php }
@@ -921,6 +1393,98 @@ $hammaddeler->data_seek(0);
                         </table>
                     </div>
                 </div>
+                <?php endif; ?>
+
+                <?php if ($duzeltme_tablo_var && $aktif_tab === 'duzeltme_talepleri'): ?>
+                    <div class="card shadow-sm mt-3" id="duzeltme_talepleri_kart">
+                        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-rotate-left me-2"></i>Silo Düzeltme Talepleri</h5>
+                            <span class="badge bg-dark"><?php echo (int) $duzeltme_talepleri_bekleyen_adet; ?> Bekleyen</span>
+                        </div>
+                        <div class="table-responsive p-3">
+                            <table class="table table-sm table-striped align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Tarih</th>
+                                        <th>Parti / Hammadde</th>
+                                        <th>Talep Eden</th>
+                                        <th>Neden</th>
+                                        <th>Durum</th>
+                                        <th>İşlem</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if ($duzeltme_talepleri && $duzeltme_talepleri->num_rows > 0): ?>
+                                        <?php while ($talep = $duzeltme_talepleri->fetch_assoc()): ?>
+                                            <?php
+                                            $talep_durum = (string) ($talep['durum'] ?? 'bekliyor');
+                                            $talep_badge = 'bg-secondary';
+                                            if ($talep_durum === 'bekliyor')
+                                                $talep_badge = 'bg-warning text-dark';
+                                            elseif ($talep_durum === 'onaylandi')
+                                                $talep_badge = 'bg-primary';
+                                            elseif ($talep_durum === 'reddedildi')
+                                                $talep_badge = 'bg-danger';
+                                            elseif ($talep_durum === 'uygulandi')
+                                                $talep_badge = 'bg-success';
+                                            ?>
+                                            <tr>
+                                                <td><small><?php echo date("d.m.Y H:i", strtotime((string) ($talep['created_at'] ?? 'now'))); ?></small></td>
+                                                <td>
+                                                    <div><strong><?php echo htmlspecialchars((string) ($talep['parti_no'] ?? '-')); ?></strong></div>
+                                                    <div class="small text-muted">
+                                                        <?php echo htmlspecialchars((string) ($talep['hammadde_kodu'] ?? '-')); ?> /
+                                                        <?php echo htmlspecialchars((string) ($talep['arac_plaka'] ?? '-')); ?>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div><?php echo htmlspecialchars((string) ($talep['talep_eden_kadi'] ?? '-')); ?></div>
+                                                    <?php if (!empty($talep['karar_veren_kadi'])): ?>
+                                                        <div class="small text-muted">Karar: <?php echo htmlspecialchars((string) $talep['karar_veren_kadi']); ?></div>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td style="min-width:260px;">
+                                                    <div class="small"><?php echo nl2br(htmlspecialchars((string) ($talep['talep_nedeni'] ?? ''))); ?></div>
+                                                    <?php if (!empty($talep['karar_notu'])): ?>
+                                                        <div class="small text-muted mt-1"><strong>Not:</strong> <?php echo nl2br(htmlspecialchars((string) $talep['karar_notu'])); ?></div>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td><span class="badge <?php echo $talep_badge; ?>"><?php echo htmlspecialchars(ucfirst($talep_durum)); ?></span></td>
+                                                <td style="min-width:240px;">
+                                                    <?php if ($is_patron && $talep_durum === 'bekliyor'): ?>
+                                                        <form method="post" class="d-flex flex-column gap-1">
+                                                            <input type="hidden" name="talep_id" value="<?php echo (int) $talep['id']; ?>">
+                                                            <input type="text" name="karar_notu" class="form-control form-control-sm" placeholder="Karar notu (opsiyonel)">
+                                                            <div class="d-flex gap-1">
+                                                                <button type="submit" name="silo_duzeltme_talep_karar" value="1" class="btn btn-sm btn-success w-100"
+                                                                    onclick="this.form.karar.value='onayla';">
+                                                                    <i class="fas fa-check me-1"></i>Onayla
+                                                                </button>
+                                                                <button type="submit" name="silo_duzeltme_talep_karar" value="1" class="btn btn-sm btn-danger w-100"
+                                                                    onclick="this.form.karar.value='reddet';">
+                                                                    <i class="fas fa-times me-1"></i>Reddet
+                                                                </button>
+                                                            </div>
+                                                            <input type="hidden" name="karar" value="onayla">
+                                                        </form>
+                                                    <?php elseif ($talep_durum === 'onaylandi'): ?>
+                                                        <span class="text-muted small">Onaylandı. Düzeltme, İzlenebilirlik ekranından yapılır.</span>
+                                                    <?php else: ?>
+                                                        <span class="text-muted small">İşlem yok</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endwhile; ?>
+                                    <?php else: ?>
+                                        <tr>
+                                            <td colspan="6" class="text-center text-muted py-3">Gosterilecek duzeltme talebi bulunmuyor.</td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -939,6 +1503,7 @@ $hammaddeler->data_seek(0);
                     </div>
                     <form method="post" id="kantarDagitimForm">
                         <input type="hidden" name="giris_id" id="modal_giris_id">
+                        <input type="hidden" name="patron_duzeltme" id="modal_patron_duzeltme" value="0">
                         <input type="hidden" id="modal_hammadde_yogunluk" value="780">
                         <input type="hidden" id="modal_referans_kg_raw" value="0">
 
@@ -993,6 +1558,32 @@ $hammaddeler->data_seek(0);
             </div>
         </div>
     </div>
+
+    <?php if ($duzeltme_tablo_var): ?>
+        <div class="modal fade" id="duzeltmeTalepModal" tabindex="-1">
+            <div class="modal-dialog">
+                <form method="post" class="modal-content border-0 shadow">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="fas fa-flag me-2"></i>Silo Düzeltme Talebi</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="giris_id" id="duzeltme_giris_id">
+                        <div class="small text-muted mb-2">Parti: <strong id="duzeltme_parti_no">-</strong></div>
+                        <div class="small text-muted mb-3">Plaka/Hammadde: <span id="duzeltme_plaka_hammadde">-</span></div>
+                        <label class="form-label">Talep Nedeni</label>
+                        <textarea name="talep_nedeni" class="form-control" rows="4"
+                            placeholder="Hatalı silo aktarımı veya miktar problemi detayını yazın..." required></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" name="silo_duzeltme_talep_olustur" class="btn btn-danger">
+                            <i class="fas fa-paper-plane me-1"></i>Talep Gönder
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <script>
         const siloOptionHtml = <?php echo json_encode($silo_option_html, JSON_UNESCAPED_UNICODE); ?>;
@@ -1080,15 +1671,18 @@ $hammaddeler->data_seek(0);
                 }
 
                 const kapasiteVar = bosM3 > 0.0001;
-                option.disabled = (!izinli || !kapasiteVar);
+                const uygun = (izinli && kapasiteVar);
+                option.disabled = !uygun;
+                option.hidden = !uygun;
 
-                let label = `${baseLabel} (Boş: ${bosM3.toFixed(2)} m³ / Max: ${Math.floor(maxKg)} KG)`;
-                if (!izinli) {
-                    label += ' - Bu hammaddeye kapalı';
-                } else if (!kapasiteVar) {
-                    label += ' - Yer yok';
+                if (!uygun && option.selected) {
+                    const select = option.parentElement;
+                    if (select) {
+                        select.value = '';
+                    }
                 }
-                option.textContent = label;
+
+                option.textContent = baseLabel + ' (Boş: ' + bosM3.toFixed(2) + ' m³ / Max: ' + Math.floor(maxKg) + ' KG)';
             });
         }
 
@@ -1210,48 +1804,55 @@ $hammaddeler->data_seek(0);
                 });
             <?php endif; ?>
 
-            $('#gecmisTablo').DataTable({
-                "order": [[0, "desc"]],
-                "pageLength": 10,
-                "language": {
-                    "emptyTable": "Tabloda herhangi bir veri mevcut değil",
-                    "info": "_TOTAL_ kayıttan _START_ - _END_ arasındaki kayıtlar gösteriliyor",
-                    "infoEmpty": "Kayıt yok",
-                    "infoFiltered": "(_MAX_ kayıt içerisinden bulunan)",
-                    "infoPostFix": "",
-                    "thousands": ".",
-                    "lengthMenu": "Sayfada _MENU_ kayıt göster",
-                    "loadingRecords": "Yükleniyor...",
-                    "processing": "İşleniyor...",
-                    "search": "Ara:",
-                    "zeroRecords": "Eşleşen kayıt bulunamadı",
-                    "paginate": {
-                        "first": "İlk",
-                        "last": "Son",
-                        "next": "Sonraki",
-                        "previous": "Önceki"
+            if ($('#gecmisTablo').length) {
+                $('#gecmisTablo').DataTable({
+                    "order": [[0, "desc"]],
+                    "pageLength": 10,
+                    "language": {
+                        "emptyTable": "Tabloda herhangi bir veri mevcut değil",
+                        "info": "_TOTAL_ kayıttan _START_ - _END_ arasındaki kayıtlar gösteriliyor",
+                        "infoEmpty": "Kayıt yok",
+                        "infoFiltered": "(_MAX_ kayıt içerisinden bulunan)",
+                        "infoPostFix": "",
+                        "thousands": ".",
+                        "lengthMenu": "Sayfada _MENU_ kayıt göster",
+                        "loadingRecords": "Yükleniyor...",
+                        "processing": "İşleniyor...",
+                        "search": "Ara:",
+                        "zeroRecords": "Eşleşen kayıt bulunamadı",
+                        "paginate": {
+                            "first": "İlk",
+                            "last": "Son",
+                            "next": "Sonraki",
+                            "previous": "Önceki"
+                        },
+                        "aria": {
+                            "sortAscending": ": artan sütun sıralamasını aktifleştir",
+                            "sortDescending": ": azalan sütun sıralamasını aktifleştir"
+                        }
                     },
-                    "aria": {
-                        "sortAscending": ": artan sütun sıralamasını aktifleştir",
-                        "sortDescending": ": azalan sütun sıralamasını aktifleştir"
-                    }
-                },
-                "dom": '<"d-flex justify-content-between align-items-center mb-3"lf>rt<"d-flex justify-content-between align-items-center mt-3"ip>'
-            });
+                    "dom": '<"d-flex justify-content-between align-items-center mb-3"lf>rt<"d-flex justify-content-between align-items-center mt-3"ip>'
+                });
+            }
 
             // SİLO MODALI
             var kantarModal = document.getElementById('kantarModal');
             if (kantarModal) {
                 kantarModal.addEventListener('show.bs.modal', function (event) {
                     var button = event.relatedTarget;
+                    if (!button) {
+                        return;
+                    }
                     var id = button.getAttribute('data-id');
                     var plaka = button.getAttribute('data-plaka');
                     var tedarikci = button.getAttribute('data-tedarikci');
                     var referansKg = parseSafeFloat(button.getAttribute('data-referans-kg') || '0');
                     var hammaddeKodu = button.getAttribute('data-hammadde-kodu') || '';
                     var yogunluk = parseSafeFloat(button.getAttribute('data-yogunluk') || '780');
+                    var patronDuzeltme = button.getAttribute('data-patron-duzeltme') === '1' ? '1' : '0';
 
                     document.getElementById('modal_giris_id').value = id;
+                    document.getElementById('modal_patron_duzeltme').value = patronDuzeltme;
                     document.getElementById('modal_plaka').value = plaka;
                     document.getElementById('modal_tedarikci').value = tedarikci || '-';
                     document.getElementById('modal_hammadde_kodu').value = hammaddeKodu;
@@ -1263,6 +1864,39 @@ $hammaddeler->data_seek(0);
 
                     dagitimSatirlariniSifirla();
                     guncelleSiloSecenekleri();
+                });
+            }
+
+            var duzeltmeTalepModal = document.getElementById('duzeltmeTalepModal');
+            if (duzeltmeTalepModal) {
+                duzeltmeTalepModal.addEventListener('show.bs.modal', function (event) {
+                    var button = event.relatedTarget;
+                    if (!button) {
+                        return;
+                    }
+
+                    var girisId = button.getAttribute('data-giris-id') || '';
+                    var partiNo = button.getAttribute('data-parti-no') || '-';
+                    var plaka = button.getAttribute('data-plaka') || '-';
+                    var hammaddeKodu = button.getAttribute('data-hammadde-kodu') || '-';
+
+                    var idInput = document.getElementById('duzeltme_giris_id');
+                    var partiText = document.getElementById('duzeltme_parti_no');
+                    var plakaHammaddeText = document.getElementById('duzeltme_plaka_hammadde');
+                    var nedenInput = duzeltmeTalepModal.querySelector('textarea[name=\"talep_nedeni\"]');
+
+                    if (idInput) {
+                        idInput.value = girisId;
+                    }
+                    if (partiText) {
+                        partiText.textContent = partiNo;
+                    }
+                    if (plakaHammaddeText) {
+                        plakaHammaddeText.textContent = plaka + ' / ' + hammaddeKodu;
+                    }
+                    if (nedenInput) {
+                        nedenInput.value = '';
+                    }
                 });
             }
 
@@ -1295,3 +1929,5 @@ $hammaddeler->data_seek(0);
     <?php echo yazmaYetkisiKontrolJS($baglanti); ?>
 </body>
 </html>
+
+

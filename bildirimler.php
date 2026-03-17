@@ -180,6 +180,21 @@ $kullanicilar = $baglanti->query("SELECT id, kadi, tam_ad FROM users WHERE aktif
             color: #dc2626;
         }
 
+        .ikon-duzeltme {
+            background: #ede9fe;
+            color: #7c3aed;
+        }
+
+        .ikon-duzeltme-onay {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .ikon-duzeltme-red {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
         .ikon-genel {
             background: #f1f5f9;
             color: #64748b;
@@ -392,6 +407,12 @@ $kullanicilar = $baglanti->query("SELECT id, kadi, tam_ad FROM users WHERE aktif
                                 Onaylandı</option>
                             <option value="reddedildi" <?php echo $bildirim_tipi == 'reddedildi' ? 'selected' : ''; ?>>
                                 Reddedildi</option>
+                            <option value="silo_duzeltme_talebi" <?php echo $bildirim_tipi == 'silo_duzeltme_talebi' ? 'selected' : ''; ?>>
+                                Silo Düzeltme Talebi</option>
+                            <option value="silo_duzeltme_onay" <?php echo $bildirim_tipi == 'silo_duzeltme_onay' ? 'selected' : ''; ?>>
+                                Silo Düzeltme Onay</option>
+                            <option value="silo_duzeltme_red" <?php echo $bildirim_tipi == 'silo_duzeltme_red' ? 'selected' : ''; ?>>
+                                Silo Düzeltme Red</option>
                             <option value="genel" <?php echo $bildirim_tipi == 'genel' ? 'selected' : ''; ?>>Genel
                                 Bildirimler</option>
                         </select>
@@ -464,6 +485,18 @@ $kullanicilar = $baglanti->query("SELECT id, kadi, tam_ad FROM users WHERE aktif
                             case 'reddedildi':
                                 $ikon_cls = 'ikon-red';
                                 $ikon = 'fa-times-circle';
+                                break;
+                            case 'silo_duzeltme_talebi':
+                                $ikon_cls = 'ikon-duzeltme';
+                                $ikon = 'fa-flag';
+                                break;
+                            case 'silo_duzeltme_onay':
+                                $ikon_cls = 'ikon-duzeltme-onay';
+                                $ikon = 'fa-rotate-left';
+                                break;
+                            case 'silo_duzeltme_red':
+                                $ikon_cls = 'ikon-duzeltme-red';
+                                $ikon = 'fa-xmark';
                                 break;
                             default:
                                 $ikon_cls = 'ikon-genel';
@@ -717,6 +750,9 @@ $kullanicilar = $baglanti->query("SELECT id, kadi, tam_ad FROM users WHERE aktif
             else if (iconCls.includes('ikon-lab')) { bgColor = '#cfe2ff'; color = '#0d6efd'; }
             else if (iconCls.includes('ikon-onay')) { bgColor = '#fff3cd'; color = '#ffc107'; }
             else if (iconCls.includes('ikon-red')) { bgColor = '#f8d7da'; color = '#dc3545'; }
+            else if (iconCls.includes('ikon-duzeltme-onay')) { bgColor = '#dcfce7'; color = '#166534'; }
+            else if (iconCls.includes('ikon-duzeltme-red')) { bgColor = '#fee2e2'; color = '#b91c1c'; }
+            else if (iconCls.includes('ikon-duzeltme')) { bgColor = '#ede9fe'; color = '#7c3aed'; }
             else { bgColor = '#e2e3e5'; color = '#383d41'; }
 
             iconBox.style.backgroundColor = bgColor;

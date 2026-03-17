@@ -231,13 +231,41 @@ $silo_karisim_map = [];
 $silo_toplam_kalan_kg = [];
 $karisim_sql = "SELECT 
                     ssd.silo_id,
+                    ssd.parti_kodu,
                     COALESCE(h.hammadde_kodu, NULLIF(TRIM(ssd.hammadde_turu), ''), 'Bilinmeyen') AS hammadde_kodu,
-                    SUM(ssd.kalan_miktar_kg) AS kalan_kg
+                    SUM(ssd.kalan_miktar_kg) AS kalan_kg,
+                    MAX(COALESCE(la_hg.hektolitre, la_pk.hektolitre)) AS lab_hektolitre,
+                    MAX(COALESCE(la_hg.nem, la_pk.nem)) AS lab_nem,
+                    MAX(COALESCE(la_hg.protein, la_pk.protein)) AS lab_protein,
+                    MAX(COALESCE(la_hg.nisasta, la_pk.nisasta)) AS lab_nisasta,
+                    MAX(COALESCE(la_hg.sertlik, la_pk.sertlik)) AS lab_sertlik,
+                    MAX(COALESCE(la_hg.gluten, la_pk.gluten)) AS lab_gluten,
+                    MAX(COALESCE(la_hg.index_degeri, la_pk.index_degeri)) AS lab_index_degeri,
+                    MAX(COALESCE(la_hg.sedimantasyon, la_pk.sedimantasyon)) AS lab_sedimantasyon,
+                    MAX(COALESCE(la_hg.gecikmeli_sedimantasyon, la_pk.gecikmeli_sedimantasyon)) AS lab_gecikmeli_sedimantasyon,
+                    MAX(COALESCE(la_hg.fn, la_pk.fn)) AS lab_fn,
+                    MAX(COALESCE(la_hg.doker_orani, la_pk.doker_orani)) AS lab_doker_orani,
+                    MAX(COALESCE(la_hg.laborant, la_pk.laborant)) AS lab_laborant,
+                    MAX(COALESCE(la_hg.tarih, la_pk.tarih)) AS lab_tarih
                 FROM silo_stok_detay ssd
                 LEFT JOIN hammadde_girisleri hg ON hg.parti_no = ssd.parti_kodu
                 LEFT JOIN hammaddeler h ON h.id = hg.hammadde_id
+                LEFT JOIN lab_analizleri la_hg ON la_hg.id = (
+                    SELECT la1.id
+                    FROM lab_analizleri la1
+                    WHERE la1.hammadde_giris_id = hg.id
+                    ORDER BY la1.id DESC
+                    LIMIT 1
+                )
+                LEFT JOIN lab_analizleri la_pk ON la_pk.id = (
+                    SELECT la2.id
+                    FROM lab_analizleri la2
+                    WHERE la2.parti_no = ssd.parti_kodu
+                    ORDER BY la2.id DESC
+                    LIMIT 1
+                )
                 WHERE ssd.kalan_miktar_kg > 0
-                GROUP BY ssd.silo_id, COALESCE(h.hammadde_kodu, NULLIF(TRIM(ssd.hammadde_turu), ''), 'Bilinmeyen')
+                GROUP BY ssd.silo_id, ssd.parti_kodu, COALESCE(h.hammadde_kodu, NULLIF(TRIM(ssd.hammadde_turu), ''), 'Bilinmeyen')
                 ORDER BY ssd.silo_id, kalan_kg DESC";
 $karisim_result = $baglanti->query($karisim_sql);
 
@@ -245,6 +273,7 @@ if ($karisim_result) {
     while ($k = $karisim_result->fetch_assoc()) {
         $silo_id = (int) ($k['silo_id'] ?? 0);
         $hammadde_kodu = trim((string) ($k['hammadde_kodu'] ?? 'Bilinmeyen'));
+        $parti_kodu = trim((string) ($k['parti_kodu'] ?? ''));
         $kalan_kg = (float) ($k['kalan_kg'] ?? 0);
 
         if ($silo_id <= 0 || $kalan_kg <= 0) {
@@ -261,7 +290,23 @@ if ($karisim_result) {
 
         $silo_karisim_map[$silo_id][] = [
             'hammadde_kodu' => $hammadde_kodu,
-            'kalan_kg' => $kalan_kg
+            'parti_kodu' => $parti_kodu,
+            'kalan_kg' => $kalan_kg,
+            'lab' => [
+                'hektolitre' => $k['lab_hektolitre'] ?? null,
+                'nem' => $k['lab_nem'] ?? null,
+                'protein' => $k['lab_protein'] ?? null,
+                'nisasta' => $k['lab_nisasta'] ?? null,
+                'sertlik' => $k['lab_sertlik'] ?? null,
+                'gluten' => $k['lab_gluten'] ?? null,
+                'index_degeri' => $k['lab_index_degeri'] ?? null,
+                'sedimantasyon' => $k['lab_sedimantasyon'] ?? null,
+                'gecikmeli_sedimantasyon' => $k['lab_gecikmeli_sedimantasyon'] ?? null,
+                'fn' => $k['lab_fn'] ?? null,
+                'doker_orani' => $k['lab_doker_orani'] ?? null,
+                'laborant' => $k['lab_laborant'] ?? null,
+                'tarih' => $k['lab_tarih'] ?? null
+            ]
         ];
         $silo_toplam_kalan_kg[$silo_id] = ($silo_toplam_kalan_kg[$silo_id] ?? 0) + $kalan_kg;
     }
@@ -278,6 +323,64 @@ if ($karisim_result) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.min.css" rel="stylesheet">
+    <style>
+        .silo-metrics {
+            margin: 0;
+        }
+
+        .silo-metric-row {
+            display: grid;
+            grid-template-columns: minmax(92px, max-content) minmax(0, 1fr);
+            gap: 0.5rem;
+            align-items: center;
+            padding: 0.35rem 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            min-width: 0;
+        }
+
+        .silo-metric-row:last-child {
+            border-bottom: 0;
+        }
+
+        .silo-metric-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            color: #5a6168;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .silo-metric-value {
+            text-align: right;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            font-weight: 700;
+            color: #1f2937;
+            min-width: 0;
+            line-height: 1.25;
+        }
+
+        .silo-metric-row.is-primary .silo-metric-value {
+            color: #0d6efd;
+        }
+
+        .silo-metric-row.is-muted .silo-metric-value {
+            color: #6c757d;
+            font-weight: 600;
+        }
+
+        @media (max-width: 576px) {
+            .silo-metric-row {
+                grid-template-columns: 1fr;
+                gap: 0.2rem;
+            }
+
+            .silo-metric-value {
+                text-align: left;
+            }
+        }
+    </style>
 </head>
 
 <body class="bg-light">
@@ -394,11 +497,24 @@ if ($karisim_result) {
                         if (!empty($karisimlar) && $toplam_kalan_kg > 0) {
                             $karisim_html = "<ul class='list-group list-group-flush small'>";
                             foreach ($karisimlar as $k) {
-                                $kodu = htmlspecialchars((string) ($k['hammadde_kodu'] ?? 'Bilinmeyen'));
+                                $kodu_raw = trim((string) ($k['hammadde_kodu'] ?? 'Bilinmeyen'));
+                                $kodu = htmlspecialchars($kodu_raw, ENT_QUOTES, 'UTF-8');
+                                $parti_raw = trim((string) ($k['parti_kodu'] ?? ''));
+                                $parti = $parti_raw !== '' ? $parti_raw : '-';
+                                $parti_esc = htmlspecialchars($parti, ENT_QUOTES, 'UTF-8');
                                 $kalan = (float) ($k['kalan_kg'] ?? 0);
                                 $oran = ($toplam_kalan_kg > 0) ? ($kalan / $toplam_kalan_kg) * 100 : 0;
+                                $lab_payload = htmlspecialchars(json_encode($k['lab'] ?? [], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+
                                 $karisim_html .= "<li class='list-group-item d-flex justify-content-between px-0 py-1'>
-                                                    <span><strong>$kodu</strong> %" . sayiFormat($oran, 1) . "</span>
+                                                    <span>
+                                                        <button type='button' class='btn btn-link p-0 text-start text-decoration-none karisim-lab-btn'
+                                                            data-hammadde-kodu='$kodu'
+                                                            data-parti-kodu='$parti_esc'
+                                                            data-lab='$lab_payload'>
+                                                            <strong>$kodu</strong> / <span class='text-muted'>$parti_esc</span> %" . sayiFormat($oran, 1) . "
+                                                        </button>
+                                                    </span>
                                                     <span>" . sayiFormat($kalan, 0) . " kg</span>
                                                   </li>";
                             }
@@ -422,20 +538,20 @@ if ($karisim_result) {
                                         <small class='d-block mt-1 fw-bold'>%" . round($yuzde) . "</small>
                                     </div>
                                     <div class='col-8'>
-                                        <ul class='list-group list-group-flush small'>
-                                            <li class='list-group-item d-flex justify-content-between px-0'>
-                                                <span><i class='fas fa-cube text-muted'></i> Doluluk:</span>
-                                                <strong>" . sayiFormat($dol_m3, 1) . " m3 / " . sayiFormat($toplam_kalan_ton, 2) . " ton</strong>
-                                            </li>
-                                            <li class='list-group-item d-flex justify-content-between px-0 text-primary'>
-                                                <span><i class='fas fa-database'></i> Kapasite:</span>
-                                                <strong>" . sayiFormat($cap_m3, 1) . " m3 / " . sayiFormat($kapasite_tahmini_ton, 2) . " ton (tah.)</strong>
-                                            </li>
-                                            <li class='list-group-item d-flex justify-content-between px-0 text-muted'>
-                                                <span>Bos Alan:</span>
-                                                <span>" . sayiFormat($bos_m3, 1) . " m3 / " . sayiFormat($bos_alan_tahmini_ton, 2) . " ton (tah.)</span>
-                                            </li>
-                                        </ul>
+                                        <div class='silo-metrics small'>
+                                            <div class='silo-metric-row'>
+                                                <span class='silo-metric-label'><i class='fas fa-cube text-muted'></i> Doluluk:</span>
+                                                <span class='silo-metric-value'>" . sayiFormat($dol_m3, 1) . " m&sup3; / " . sayiFormat($toplam_kalan_ton, 2) . " ton</span>
+                                            </div>
+                                            <div class='silo-metric-row is-primary'>
+                                                <span class='silo-metric-label'><i class='fas fa-database'></i> Kapasite:</span>
+                                                <span class='silo-metric-value'>" . sayiFormat($cap_m3, 1) . " m&sup3; / " . sayiFormat($kapasite_tahmini_ton, 2) . " ton (tah.)</span>
+                                            </div>
+                                            <div class='silo-metric-row is-muted'>
+                                                <span class='silo-metric-label'>Bos Alan:</span>
+                                                <span class='silo-metric-value'>" . sayiFormat($bos_m3, 1) . " m&sup3; / " . sayiFormat($bos_alan_tahmini_ton, 2) . " ton (tah.)</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 
@@ -502,7 +618,7 @@ if ($karisim_result) {
                         </select>
                     </div>
                     <div class="row">
-                        <div class="col-12"><label>Kapasite (m3)</label><input type="number" step="0.1"
+                        <div class="col-12"><label>Kapasite (m&sup3;)</label><input type="number" step="0.1"
                                 name="kapasite_m3" class="form-control" required></div>
                     </div>
                     <div class="mb-2">
@@ -542,7 +658,7 @@ if ($karisim_result) {
                             <div class="mb-3"><label>Adı</label><input type="text" name="silo_adi" id="edit_adi"
                                     class="form-control" required></div>
                             <div class="row mb-3">
-                                <div class="col-12"><label>m3</label><input type="number" step="0.1" name="kapasite_m3"
+                                <div class="col-12"><label>m&sup3;</label><input type="number" step="0.1" name="kapasite_m3"
                                         id="edit_kapasite" class="form-control"></div>
                             </div>
                             <div class="mb-3"><label>Durum</label>
@@ -616,6 +732,72 @@ if ($karisim_result) {
         </div>
     </div>
 
+    <div class="modal fade" id="labAnalizModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="fas fa-flask me-2"></i>Parti Lab Analizi</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div><strong>Hammadde Kodu:</strong> <span id="lab_modal_hammadde_kodu">-</span></div>
+                        <div><strong>Parti Kodu:</strong> <span id="lab_modal_parti_kodu">-</span></div>
+                    </div>
+                    <div id="lab_modal_kayit_yok" class="alert alert-warning d-none mb-3">
+                        Bu parti için lab analizi bulunamadı.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0">
+                            <tbody>
+                                <tr>
+                                    <th style="width: 25%;">Hektolitre</th>
+                                    <td id="lab_modal_hektolitre">-</td>
+                                    <th style="width: 25%;">Nem</th>
+                                    <td id="lab_modal_nem">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Protein</th>
+                                    <td id="lab_modal_protein">-</td>
+                                    <th>Nişasta</th>
+                                    <td id="lab_modal_nisasta">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Sertlik</th>
+                                    <td id="lab_modal_sertlik">-</td>
+                                    <th>Gluten</th>
+                                    <td id="lab_modal_gluten">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Index</th>
+                                    <td id="lab_modal_index">-</td>
+                                    <th>Sedimantasyon</th>
+                                    <td id="lab_modal_sedimantasyon">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Gecikmeli Sedimantasyon</th>
+                                    <td id="lab_modal_gecikmeli_sedimantasyon">-</td>
+                                    <th>FN</th>
+                                    <td id="lab_modal_fn">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Döker Oranı</th>
+                                    <td id="lab_modal_doker_orani">-</td>
+                                    <th>Laborant</th>
+                                    <td id="lab_modal_laborant">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <td colspan="3" id="lab_modal_tarih">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.all.min.js"></script>
     <script>
@@ -678,6 +860,70 @@ if ($karisim_result) {
             document.getElementById('sil_adi').innerText = adi;
             new bootstrap.Modal(document.getElementById('silModal')).show();
         }
+
+        function labDegerFormat(value) {
+            if (value === null || value === undefined || value === '') {
+                return '-';
+            }
+            return String(value);
+        }
+
+        function labModalDoldur(labData, hammaddeKodu, partiKodu) {
+            document.getElementById('lab_modal_hammadde_kodu').innerText = hammaddeKodu || '-';
+            document.getElementById('lab_modal_parti_kodu').innerText = partiKodu || '-';
+
+            const alanlar = {
+                hektolitre: 'lab_modal_hektolitre',
+                nem: 'lab_modal_nem',
+                protein: 'lab_modal_protein',
+                nisasta: 'lab_modal_nisasta',
+                sertlik: 'lab_modal_sertlik',
+                gluten: 'lab_modal_gluten',
+                index_degeri: 'lab_modal_index',
+                sedimantasyon: 'lab_modal_sedimantasyon',
+                gecikmeli_sedimantasyon: 'lab_modal_gecikmeli_sedimantasyon',
+                fn: 'lab_modal_fn',
+                doker_orani: 'lab_modal_doker_orani',
+                laborant: 'lab_modal_laborant',
+                tarih: 'lab_modal_tarih'
+            };
+
+            let analizVar = false;
+            Object.keys(alanlar).forEach(function (key) {
+                const rawVal = (labData && Object.prototype.hasOwnProperty.call(labData, key)) ? labData[key] : null;
+                if (rawVal !== null && rawVal !== undefined && rawVal !== '') {
+                    analizVar = true;
+                }
+                document.getElementById(alanlar[key]).innerText = labDegerFormat(rawVal);
+            });
+
+            const kayitYok = document.getElementById('lab_modal_kayit_yok');
+            if (analizVar) {
+                kayitYok.classList.add('d-none');
+            } else {
+                kayitYok.classList.remove('d-none');
+            }
+        }
+
+        document.addEventListener('click', function (event) {
+            const btn = event.target.closest('.karisim-lab-btn');
+            if (!btn) {
+                return;
+            }
+
+            let labData = {};
+            try {
+                labData = JSON.parse(btn.getAttribute('data-lab') || '{}');
+            } catch (e) {
+                labData = {};
+            }
+
+            const hammaddeKodu = btn.getAttribute('data-hammadde-kodu') || '-';
+            const partiKodu = btn.getAttribute('data-parti-kodu') || '-';
+
+            labModalDoldur(labData, hammaddeKodu, partiKodu);
+            new bootstrap.Modal(document.getElementById('labAnalizModal')).show();
+        });
     </script>
 
     <?php echo yazmaYetkisiKontrolJS($baglanti); ?>

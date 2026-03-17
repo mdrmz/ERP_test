@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS `silo_duzeltme_talepleri` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `hammadde_giris_id` int(11) NOT NULL,
+  `parti_no` varchar(50) NOT NULL,
+  `talep_nedeni` text NOT NULL,
+  `talep_eden_user_id` int(11) NOT NULL,
+  `durum` enum('bekliyor','onaylandi','reddedildi','uygulandi') NOT NULL DEFAULT 'bekliyor',
+  `karar_veren_user_id` int(11) DEFAULT NULL,
+  `karar_notu` text DEFAULT NULL,
+  `onay_tarihi` datetime DEFAULT NULL,
+  `uygulama_tarihi` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_sdt_hammadde_giris` (`hammadde_giris_id`),
+  KEY `idx_sdt_parti_no` (`parti_no`),
+  KEY `idx_sdt_durum` (`durum`),
+  KEY `idx_sdt_talep_eden` (`talep_eden_user_id`),
+  KEY `idx_sdt_karar_veren` (`karar_veren_user_id`),
+  CONSTRAINT `fk_sdt_hammadde_giris` FOREIGN KEY (`hammadde_giris_id`) REFERENCES `hammadde_girisleri` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_sdt_talep_eden_user` FOREIGN KEY (`talep_eden_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_sdt_karar_veren_user` FOREIGN KEY (`karar_veren_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
