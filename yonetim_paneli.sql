@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Anamakine: 127.0.0.1
--- Üretim Zamanı: 16 Mar 2026, 11:13:53
+-- Üretim Zamanı: 23 Mar 2026, 11:05:52
 -- Sunucu sürümü: 10.4.32-MariaDB
 -- PHP Sürümü: 8.2.12
 
@@ -123,6 +123,22 @@ CREATE TABLE `bakim_kayitlari` (
   `teknisyen` varchar(50) DEFAULT NULL,
   `notlar` text DEFAULT NULL,
   `created_at` datetime DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tablo için tablo yapısı `bakim_lab_malzemeler`
+--
+
+CREATE TABLE `bakim_lab_malzemeler` (
+  `id` int(11) NOT NULL,
+  `malzeme_adi` varchar(255) NOT NULL,
+  `miktar` decimal(10,2) DEFAULT 0.00,
+  `birim` varchar(50) DEFAULT NULL,
+  `kullanim_alani` varchar(255) DEFAULT NULL,
+  `kritik_seviye` decimal(10,2) DEFAULT 0.00,
+  `tarih` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -870,21 +886,30 @@ INSERT INTO `modul_yetkileri` (`id`, `rol_id`, `modul_adi`, `okuma`, `yazma`, `o
 
 CREATE TABLE `musteriler` (
   `id` int(11) NOT NULL,
-  `firma_adi` varchar(150) NOT NULL,
+  `cari_kod` varchar(50) NOT NULL,
+  `cari_tip` enum('Müşteri','Tedarikçi') NOT NULL,
+  `firma_adi` varchar(255) NOT NULL,
   `yetkili_kisi` varchar(100) DEFAULT NULL,
-  `telefon` varchar(20) DEFAULT NULL,
+  `telefon` varchar(50) DEFAULT NULL,
+  `eposta` varchar(100) DEFAULT NULL,
+  `vergi_dairesi` varchar(100) DEFAULT NULL,
+  `vergi_no` varchar(50) DEFAULT NULL,
+  `il` varchar(50) DEFAULT NULL,
+  `ilce` varchar(50) DEFAULT NULL,
   `adres` text DEFAULT NULL,
-  `vergi_no` varchar(20) DEFAULT NULL,
-  `bakiye` decimal(10,2) DEFAULT 0.00,
-  `created_at` datetime DEFAULT current_timestamp()
+  `ozel_notlar` text DEFAULT NULL,
+  `bakiye` decimal(18,2) DEFAULT 0.00,
+  `para_birimi` varchar(10) DEFAULT 'TL',
+  `kayit_tarihi` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Tablo döküm verisi `musteriler`
 --
 
-INSERT INTO `musteriler` (`id`, `firma_adi`, `yetkili_kisi`, `telefon`, `adres`, `vergi_no`, `bakiye`, `created_at`) VALUES
-(1, 'TEST', 'TEST', 'ERERSER', 'SDSF', NULL, 0.00, '2026-02-24 14:49:16');
+INSERT INTO `musteriler` (`id`, `cari_kod`, `cari_tip`, `firma_adi`, `yetkili_kisi`, `telefon`, `eposta`, `vergi_dairesi`, `vergi_no`, `il`, `ilce`, `adres`, `ozel_notlar`, `bakiye`, `para_birimi`, `kayit_tarihi`) VALUES
+(1, '120.01.001', 'Müşteri', 'Kardeşler Ekmek Fırını', 'Ahmet Demir', '0532 111 22 33', 'kardesler@mail.com', 'Marmara', '1234567890', 'İstanbul', 'Esenyurt', 'Fatih Mah. 12. Sokak No:5', 'Düzenli un alımı yapar, ödemeler haftalık.', 0.00, 'TL', '2026-03-23 09:09:07'),
+(2, '320.01.005', 'Tedarikçi', 'Anadolu Tarım Ürünleri', 'Mehmet Yılmaz', '0544 333 44 55', 'anadolu@tarim.com', 'Konya V.D.', '9876543210', 'Konya', 'Meram', 'Sanayi Sitesi B Blok No:12', 'Buğday tedarikçimiz, protein oranı yüksek ürün verir.', 0.00, 'TL', '2026-03-23 09:09:07');
 
 -- --------------------------------------------------------
 
@@ -1246,6 +1271,27 @@ INSERT INTO `silolar` (`id`, `silo_adi`, `tip`, `kapasite_m3`, `doluluk_m3`, `ak
 -- --------------------------------------------------------
 
 --
+-- Tablo için tablo yapısı `silo_duzeltme_talepleri`
+--
+
+CREATE TABLE `silo_duzeltme_talepleri` (
+  `id` int(11) NOT NULL,
+  `hammadde_giris_id` int(11) NOT NULL,
+  `parti_no` varchar(50) NOT NULL,
+  `talep_nedeni` text NOT NULL,
+  `talep_eden_user_id` int(11) NOT NULL,
+  `durum` enum('bekliyor','onaylandi','reddedildi','uygulandi') NOT NULL DEFAULT 'bekliyor',
+  `karar_veren_user_id` int(11) DEFAULT NULL,
+  `karar_notu` text DEFAULT NULL,
+  `onay_tarihi` datetime DEFAULT NULL,
+  `uygulama_tarihi` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Tablo için tablo yapısı `silo_kabul_turleri`
 --
 
@@ -1298,9 +1344,11 @@ CREATE TABLE `silo_stok_detay` (
 CREATE TABLE `siparisler` (
   `id` int(11) NOT NULL,
   `musteri_id` int(11) NOT NULL,
+  `alici_adi` varchar(255) DEFAULT NULL,
   `siparis_kodu` varchar(20) DEFAULT NULL,
   `siparis_tarihi` date NOT NULL,
   `teslim_tarihi` date DEFAULT NULL,
+  `odeme_tarihi` date DEFAULT NULL,
   `durum` varchar(20) DEFAULT 'Bekliyor',
   `toplam_tutar` decimal(10,2) DEFAULT 0.00,
   `aciklama` text DEFAULT NULL,
@@ -1465,7 +1513,10 @@ INSERT INTO `system_logs` (`id`, `user_id`, `action_type`, `module`, `descriptio
 (77, 1, 'PURCHASE', 'Hammadde Alım Reddi', 'Akış ID: 6 reddedildi. Sebep: öyle', '::1', '2026-03-12 09:57:46'),
 (78, 1, 'INSERT', 'Hammadde Kabul', 'Yeni araç girişi: 27 TEST 27 | Tedarikçi: Deneme | Hammadde: VBURGAZ | 0 kg', '::1', '2026-03-12 09:58:43'),
 (79, 1, 'INSERT', 'Lab Analizleri', 'Yeni analiz kaydi: Parti No: D1-0001 | Protein: -% | Gluten: -%', '::1', '2026-03-12 09:58:59'),
-(80, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-12 11:06:26');
+(80, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-12 11:06:26'),
+(81, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 08:35:17'),
+(82, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 08:36:06'),
+(83, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 09:49:37');
 
 -- --------------------------------------------------------
 
@@ -2018,6 +2069,12 @@ ALTER TABLE `bakim_kayitlari`
   ADD KEY `makine_id` (`makine_id`);
 
 --
+-- Tablo için indeksler `bakim_lab_malzemeler`
+--
+ALTER TABLE `bakim_lab_malzemeler`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Tablo için indeksler `bildirimler`
 --
 ALTER TABLE `bildirimler`
@@ -2210,7 +2267,8 @@ ALTER TABLE `modul_yetkileri`
 -- Tablo için indeksler `musteriler`
 --
 ALTER TABLE `musteriler`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `cari_kod` (`cari_kod`);
 
 --
 -- Tablo için indeksler `musteri_spektleri`
@@ -2340,6 +2398,17 @@ ALTER TABLE `sikayet_faaliyetleri`
 --
 ALTER TABLE `silolar`
   ADD PRIMARY KEY (`id`);
+
+--
+-- Tablo için indeksler `silo_duzeltme_talepleri`
+--
+ALTER TABLE `silo_duzeltme_talepleri`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_sdt_hammadde_giris` (`hammadde_giris_id`),
+  ADD KEY `idx_sdt_parti_no` (`parti_no`),
+  ADD KEY `idx_sdt_durum` (`durum`),
+  ADD KEY `idx_sdt_talep_eden` (`talep_eden_user_id`),
+  ADD KEY `idx_sdt_karar_veren` (`karar_veren_user_id`);
 
 --
 -- Tablo için indeksler `silo_kabul_turleri`
@@ -2600,6 +2669,12 @@ ALTER TABLE `bakim_kayitlari`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- Tablo için AUTO_INCREMENT değeri `bakim_lab_malzemeler`
+--
+ALTER TABLE `bakim_lab_malzemeler`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- Tablo için AUTO_INCREMENT değeri `bildirimler`
 --
 ALTER TABLE `bildirimler`
@@ -2747,7 +2822,7 @@ ALTER TABLE `modul_yetkileri`
 -- Tablo için AUTO_INCREMENT değeri `musteriler`
 --
 ALTER TABLE `musteriler`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `musteri_spektleri`
@@ -2846,6 +2921,12 @@ ALTER TABLE `silolar`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
+-- Tablo için AUTO_INCREMENT değeri `silo_duzeltme_talepleri`
+--
+ALTER TABLE `silo_duzeltme_talepleri`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- Tablo için AUTO_INCREMENT değeri `silo_kabul_turleri`
 --
 ALTER TABLE `silo_kabul_turleri`
@@ -2891,7 +2972,7 @@ ALTER TABLE `stok_hareketleri`
 -- Tablo için AUTO_INCREMENT değeri `system_logs`
 --
 ALTER TABLE `system_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=81;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=84;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `temizlik_kayitlari`
@@ -3236,6 +3317,14 @@ ALTER TABLE `sevkiyat_randevulari`
   ADD CONSTRAINT `sevkiyat_randevulari_ibfk_3` FOREIGN KEY (`onaylayan_user_id`) REFERENCES `users` (`id`);
 
 --
+-- Tablo kısıtlamaları `silo_duzeltme_talepleri`
+--
+ALTER TABLE `silo_duzeltme_talepleri`
+  ADD CONSTRAINT `fk_sdt_hammadde_giris` FOREIGN KEY (`hammadde_giris_id`) REFERENCES `hammadde_girisleri` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_sdt_karar_veren_user` FOREIGN KEY (`karar_veren_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `fk_sdt_talep_eden_user` FOREIGN KEY (`talep_eden_user_id`) REFERENCES `users` (`id`);
+
+--
 -- Tablo kısıtlamaları `silo_kabul_turleri`
 --
 ALTER TABLE `silo_kabul_turleri`
@@ -3323,33 +3412,6 @@ ALTER TABLE `yikama_islemleri`
 --
 ALTER TABLE `yikama_kayitlari`
   ADD CONSTRAINT `fk_yikama_hammadde` FOREIGN KEY (`hammadde_parti_no`) REFERENCES `hammadde_girisleri` (`parti_no`) ON DELETE SET NULL ON UPDATE CASCADE;
---
--- Silo duzeltme talepleri tablosu (hammadde.php duzeltme akisi)
---
-CREATE TABLE IF NOT EXISTS `silo_duzeltme_talepleri` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `hammadde_giris_id` int(11) NOT NULL,
-  `parti_no` varchar(50) NOT NULL,
-  `talep_nedeni` text NOT NULL,
-  `talep_eden_user_id` int(11) NOT NULL,
-  `durum` enum('bekliyor','onaylandi','reddedildi','uygulandi') NOT NULL DEFAULT 'bekliyor',
-  `karar_veren_user_id` int(11) DEFAULT NULL,
-  `karar_notu` text DEFAULT NULL,
-  `onay_tarihi` datetime DEFAULT NULL,
-  `uygulama_tarihi` datetime DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_sdt_hammadde_giris` (`hammadde_giris_id`),
-  KEY `idx_sdt_parti_no` (`parti_no`),
-  KEY `idx_sdt_durum` (`durum`),
-  KEY `idx_sdt_talep_eden` (`talep_eden_user_id`),
-  KEY `idx_sdt_karar_veren` (`karar_veren_user_id`),
-  CONSTRAINT `fk_sdt_hammadde_giris` FOREIGN KEY (`hammadde_giris_id`) REFERENCES `hammadde_girisleri` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_sdt_talep_eden_user` FOREIGN KEY (`talep_eden_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_sdt_karar_veren_user` FOREIGN KEY (`karar_veren_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

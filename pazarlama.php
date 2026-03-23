@@ -16,6 +16,13 @@ sayfaErisimKontrol($baglanti);
 
 $mesaj = "";
 $hata = "";
+$secili_musteri_id = 0;
+
+if (isset($_POST["musteri_id"]) && $_POST["musteri_id"] !== "") {
+    $secili_musteri_id = (int) $_POST["musteri_id"];
+} elseif (isset($_GET["musteri_id"]) && $_GET["musteri_id"] !== "") {
+    $secili_musteri_id = (int) $_GET["musteri_id"];
+}
 
 // YENİ SİPARİŞ OLUŞTUR (Pazarlama Ekibi)
 if (isset($_POST["siparis_olustur"])) {
@@ -74,6 +81,8 @@ $musteriler = $baglanti->query("SELECT id, firma_adi, yetkili_kisi, cari_kod FRO
     <title>Pazarlama & Satış - Özbal Un</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.min.css" rel="stylesheet">
     <style>
         .pazarlama-card {
@@ -153,13 +162,14 @@ $musteriler = $baglanti->query("SELECT id, firma_adi, yetkili_kisi, cari_kod FRO
                             <div class="row mb-4">
                                 <div class="col-md-6 mb-3 mb-md-0">
                                     <label class="form-label fw-bold">1. Müşteri Seçin *</label>
-                                    <select name="musteri_id" class="form-select" required>
+                                    <select name="musteri_id" id="musteri_id" class="form-select select2-musteri" required>
                                         <option value="">-- Müşteri Seçiniz --</option>
                                         <?php
                                         if ($musteriler && $musteriler->num_rows > 0) {
                                             $musteriler->data_seek(0);
                                             while ($m = $musteriler->fetch_assoc()) {
-                                                echo "<option value='{$m['id']}'>[{$m['cari_kod']}] {$m['firma_adi']} " . ($m['yetkili_kisi'] ? "({$m['yetkili_kisi']})" : "") . "</option>";
+                                                $selected = ((int) $m['id'] === $secili_musteri_id) ? "selected" : "";
+                                                echo "<option value='{$m['id']}' {$selected}>[{$m['cari_kod']}] {$m['firma_adi']} " . ($m['yetkili_kisi'] ? "({$m['yetkili_kisi']})" : "") . "</option>";
                                             }
                                         }
                                         ?>
@@ -249,10 +259,19 @@ $musteriler = $baglanti->query("SELECT id, firma_adi, yetkili_kisi, cari_kod FRO
         </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.all.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            if (window.jQuery && $.fn.select2) {
+                $('.select2-musteri').select2({
+                    theme: 'bootstrap-5',
+                    width: '100%'
+                });
+            }
+
             // SweetAlert2 Alerts
             <?php if (!empty($mesaj)): ?>
                 <?php if (isset($yeni_siparis_id)): ?>
