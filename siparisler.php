@@ -19,122 +19,210 @@ $hata = "";
 
 // --- 1. YENİ MÜŞTERİ EKLE ---
 if (isset($_POST["musteri_ekle"])) {
-    $kod = $baglanti->real_escape_string($_POST["cari_kod"]);
-    $tip = (strpos($kod, '120') === 0) ? 'Müşteri' : ((strpos($kod, '320') === 0) ? 'Tedarikçi' : 'Müşteri');
-    $ad = $baglanti->real_escape_string($_POST["firma_adi"]);
-    $yetkili = $baglanti->real_escape_string($_POST["yetkili_kisi"]);
-    $tel = $baglanti->real_escape_string($_POST["telefon"]);
-    $adres = $baglanti->real_escape_string($_POST["adres"]);
-
-    // Aynı kodda var mı kontrolü
-    $kontrol = $baglanti->query("SELECT id FROM musteriler WHERE cari_kod = '$kod'");
-    if ($kontrol && $kontrol->num_rows > 0) {
-        $hata = "⚠️ Bu cari kod ($kod) zaten kayıtlı!";
+    if (!yazmaYetkisiVar($baglanti)) {
+        $hata = "Bu işlem için yazma yetkiniz bulunmuyor.";
     } else {
-        $sql = "INSERT INTO musteriler (cari_kod, cari_tip, firma_adi, yetkili_kisi, telefon, adres) 
-                VALUES ('$kod', '$tip', '$ad', '$yetkili', '$tel', '$adres')";
-        if ($baglanti->query($sql)) {
-            $mesaj = "✅ Müşteri eklendi: $ad ($kod)";
+        $kod = $baglanti->real_escape_string($_POST["cari_kod"]);
+        $tip = (strpos($kod, '120') === 0) ? 'Müşteri' : ((strpos($kod, '320') === 0) ? 'Tedarikçi' : 'Müşteri');
+        $ad = $baglanti->real_escape_string($_POST["firma_adi"]);
+        $yetkili = $baglanti->real_escape_string($_POST["yetkili_kisi"]);
+        $tel = $baglanti->real_escape_string($_POST["telefon"]);
+        $adres = $baglanti->real_escape_string($_POST["adres"]);
+
+        // Aynı kodda var mı kontrolü
+        $kontrol = $baglanti->query("SELECT id FROM musteriler WHERE cari_kod = '$kod'");
+        if ($kontrol && $kontrol->num_rows > 0) {
+            $hata = "⚠️ Bu cari kod ($kod) zaten kayıtlı!";
         } else {
-            $hata = "Hata: " . $baglanti->error;
+            $sql = "INSERT INTO musteriler (cari_kod, cari_tip, firma_adi, yetkili_kisi, telefon, adres) 
+                    VALUES ('$kod', '$tip', '$ad', '$yetkili', '$tel', '$adres')";
+            if ($baglanti->query($sql)) {
+                $mesaj = "✅ Müşteri eklendi: $ad ($kod)";
+            } else {
+                $hata = "Hata: " . $baglanti->error;
+            }
         }
     }
 }
 
 // --- 2. YENİ SİPARİŞ OLUŞTUR ---
 if (isset($_POST["siparis_olustur"])) {
-    $musteri_id = (int) $_POST["musteri_id"];
-    $tarih = $_POST["siparis_tarihi"];
-    $teslim = $_POST["teslim_tarihi"];
-    $aciklama = $baglanti->real_escape_string($_POST["aciklama"]);
-    $siparis_kodu = "SIP-" . date("Ymd") . "-" . rand(100, 999);
-
-    // Ana Sipariş Kaydı
-    $sql_baslik = "INSERT INTO siparisler (musteri_id, siparis_kodu, siparis_tarihi, teslim_tarihi, aciklama, durum) 
-                   VALUES ($musteri_id, '$siparis_kodu', '$tarih', '$teslim', '$aciklama', 'Bekliyor')";
-
-    if ($baglanti->query($sql_baslik)) {
-        $siparis_id = $baglanti->insert_id;
-
-        // Ürünleri Ekle
-        if (isset($_POST["urunler"]) && is_array($_POST["urunler"])) {
-            foreach ($_POST["urunler"] as $k => $urun_adi) {
-                if (empty($urun_adi))
-                    continue;
-                $miktar = (int) $_POST["miktarlar"][$k];
-                $birim = $_POST["birimler"][$k];
-
-                // Ürün adını temizle
-                $urun_adi = $baglanti->real_escape_string($urun_adi);
-
-                $baglanti->query("INSERT INTO siparis_detaylari (siparis_id, urun_adi, miktar, birim) 
-                                   VALUES ($siparis_id, '$urun_adi', $miktar, '$birim')");
-            }
-        }
-        $mesaj = "✅ Sipariş oluşturuldu: $siparis_kodu";
+    if (!yazmaYetkisiVar($baglanti)) {
+        $hata = "Bu işlem için yazma yetkiniz bulunmuyor.";
     } else {
-        $hata = "Sipariş oluşturulurken hata: " . $baglanti->error;
+        $musteri_id = (int) $_POST["musteri_id"];
+        $tarih = $_POST["siparis_tarihi"];
+        $teslim = $_POST["teslim_tarihi"];
+        $alici = isset($_POST["alici_adi"]) ? $baglanti->real_escape_string($_POST["alici_adi"]) : "";
+        $odeme = isset($_POST["odeme_tarihi"]) ? $_POST["odeme_tarihi"] : null;
+        if (empty($odeme)) {
+            $odeme = null;
+        }
+        $odeme_sql = $odeme ? "'$odeme'" : "NULL";
+        $aciklama = $baglanti->real_escape_string($_POST["aciklama"]);
+        $siparis_kodu = "SIP-" . date("Ymd") . "-" . rand(100, 999);
+
+        // Ana Sipariş Kaydı
+        $sql_baslik = "INSERT INTO siparisler (musteri_id, siparis_kodu, siparis_tarihi, teslim_tarihi, alici_adi, odeme_tarihi, aciklama, durum) 
+                    VALUES ($musteri_id, '$siparis_kodu', '$tarih', '$teslim', '$alici', $odeme_sql, '$aciklama', 'Bekliyor')";
+
+        if ($baglanti->query($sql_baslik)) {
+            $siparis_id = $baglanti->insert_id;
+
+            // Ürünleri Ekle
+            if (isset($_POST["urunler"]) && is_array($_POST["urunler"])) {
+                foreach ($_POST["urunler"] as $k => $urun_adi) {
+                    if (empty($urun_adi))
+                        continue;
+                    $miktar = (int) $_POST["miktarlar"][$k];
+                    $birim = $_POST["birimler"][$k];
+
+                    // Ürün adını temizle
+                    $urun_adi = $baglanti->real_escape_string($urun_adi);
+
+                    $baglanti->query("INSERT INTO siparis_detaylari (siparis_id, urun_adi, miktar, birim) 
+                                    VALUES ($siparis_id, '$urun_adi', $miktar, '$birim')");
+                }
+            }
+            $mesaj = "✅ Sipariş oluşturuldu: $siparis_kodu";
+        } else {
+            $hata = "Sipariş oluşturulurken hata: " . $baglanti->error;
+        }
     }
 }
 
-// --- 3. SEVKİYAT GİRİŞİ (Parçalı Sevkiyat) ---
-if (isset($_POST["sevkiyat_gir"])) {
-    $siparis_id = (int) $_POST["siparis_id"];
-    $plaka = $baglanti->real_escape_string($_POST["plaka"]);
-    $sevk_tarihi = $_POST["sevk_tarihi"];
+// --- 3. FİYATLANDIRMA KAYDET ---
+if (isset($_POST["fiyatlandirma_kaydet"])) {
+    if (!yazmaYetkisiVar($baglanti)) {
+        $hata = "Bu işlem için yazma yetkiniz bulunmuyor.";
+    } else {
+        $siparis_id = isset($_POST["siparis_id"]) ? (int) $_POST["siparis_id"] : 0;
+        $fiyatlar = isset($_POST["birim_fiyat"]) && is_array($_POST["birim_fiyat"]) ? $_POST["birim_fiyat"] : [];
 
-    $sevk_var = false;
-    $hata_log = [];
+        if ($siparis_id <= 0) {
+            $hata = "Geçersiz sipariş bilgisi.";
+        } else {
+            $satirlar_res = $baglanti->query("SELECT id, miktar FROM siparis_detaylari WHERE siparis_id = $siparis_id");
+            if (!$satirlar_res || $satirlar_res->num_rows === 0) {
+                $hata = "Fiyatlandırılacak sipariş satırı bulunamadı.";
+            } else {
+                $baglanti->begin_transaction();
+                try {
+                    while ($satir = $satirlar_res->fetch_assoc()) {
+                        $detay_id = (int) $satir['id'];
+                        $miktar = (int) $satir['miktar'];
+                        $raw_fiyat = isset($fiyatlar[$detay_id]) ? trim((string) $fiyatlar[$detay_id]) : '';
+                        $norm_fiyat = str_replace(',', '.', $raw_fiyat);
 
-    if (isset($_POST["sevk_miktar"]) && is_array($_POST["sevk_miktar"])) {
-        foreach ($_POST["sevk_miktar"] as $detay_id => $miktar) {
-            $miktar = (int) $miktar;
-            if ($miktar > 0) {
-                $sevk_var = true;
+                        if ($raw_fiyat === '' || !is_numeric($norm_fiyat) || (float) $norm_fiyat <= 0) {
+                            throw new Exception("Tüm satırlar için birim fiyat 0'dan büyük olmalıdır.");
+                        }
 
-                // 1. Detay tablosunda sevk edilen miktarı güncelle
-                $sql_upd = "UPDATE siparis_detaylari SET sevk_edilen_miktar = sevk_edilen_miktar + $miktar WHERE id = $detay_id";
-                if (!$baglanti->query($sql_upd)) {
-                    $hata_log[] = "Ürün ID $detay_id güncellenemedi: " . $baglanti->error;
-                    continue;
-                }
+                        $birim_fiyat = round((float) $norm_fiyat, 2);
+                        $toplam_fiyat = round($miktar * $birim_fiyat, 2);
 
-                // 2. Ürün adını al
-                $detay_res = $baglanti->query("SELECT urun_adi FROM siparis_detaylari WHERE id=$detay_id");
-                if (!$detay_res) {
-                    $hata_log[] = "Ürün adı alınamadı: " . $baglanti->error;
-                    continue;
-                }
+                        $sql_upd = "UPDATE siparis_detaylari
+                                    SET birim_fiyat = $birim_fiyat,
+                                        toplam_fiyat = $toplam_fiyat
+                                    WHERE id = $detay_id AND siparis_id = $siparis_id";
+                        if (!$baglanti->query($sql_upd)) {
+                            throw new Exception("Satır fiyatı güncellenemedi: " . $baglanti->error);
+                        }
+                    }
 
-                $detay = $detay_res->fetch_assoc();
-                $urun_adi = $baglanti->real_escape_string($detay['urun_adi']);
+                    $toplam_res = $baglanti->query("SELECT COALESCE(SUM(toplam_fiyat), 0) AS toplam FROM siparis_detaylari WHERE siparis_id = $siparis_id");
+                    if (!$toplam_res) {
+                        throw new Exception("Sipariş toplamı hesaplanamadı: " . $baglanti->error);
+                    }
+                    $toplam = (float) $toplam_res->fetch_assoc()['toplam'];
 
-                // 3. Sevkiyat logu ekle
-                $sql_ins = "INSERT INTO sevkiyat_detaylari (siparis_id, urun_adi, miktar, sevk_tarihi, plaka) 
-                            VALUES ($siparis_id, '$urun_adi', $miktar, '$sevk_tarihi', '$plaka')";
-                if (!$baglanti->query($sql_ins)) {
-                    $hata_log[] = "Sevkiyat detay eklenemedi: " . $baglanti->error;
+                    if (!$baglanti->query("UPDATE siparisler SET toplam_tutar = $toplam, genel_toplam = $toplam WHERE id = $siparis_id")) {
+                        throw new Exception("Sipariş toplamı güncellenemedi: " . $baglanti->error);
+                    }
+
+                    $baglanti->commit();
+                    $mesaj = "✅ Fiyatlandırma kaydedildi.";
+                } catch (Exception $e) {
+                    $baglanti->rollback();
+                    $hata = $e->getMessage();
                 }
             }
         }
     }
+}
 
-    if ($sevk_var && empty($hata_log)) {
-        $toplam_sip_res = $baglanti->query("SELECT SUM(miktar) as t FROM siparis_detaylari WHERE siparis_id=$siparis_id");
-        $toplam_sevk_res = $baglanti->query("SELECT SUM(sevk_edilen_miktar) as t FROM siparis_detaylari WHERE siparis_id=$siparis_id");
-
-        $toplam_sip = ($toplam_sip_res) ? $toplam_sip_res->fetch_assoc()['t'] : 0;
-        $toplam_sevk = ($toplam_sevk_res) ? $toplam_sevk_res->fetch_assoc()['t'] : 0;
-
-        $yeni_durum = ($toplam_sip > 0 && $toplam_sevk >= $toplam_sip) ? 'TeslimEdildi' : 'KismiSevk';
-        $baglanti->query("UPDATE siparisler SET durum='$yeni_durum' WHERE id=$siparis_id");
-
-        $mesaj = "✅ Sevkiyat kaydedildi. Sipariş Durumu: $yeni_durum";
+// --- 4. SEVKİYAT GİRİŞİ (Parçalı Sevkiyat) ---
+if (isset($_POST["sevkiyat_gir"])) {
+    if (!yazmaYetkisiVar($baglanti)) {
+        $hata = "Bu işlem için yazma yetkiniz bulunmuyor.";
     } else {
-        if (!empty($hata_log)) {
-            $hata = "Sevkiyat sırasında bazı hatalar oluştu: <br>" . implode("<br>", $hata_log);
+        $siparis_id = (int) $_POST["siparis_id"];
+        $plaka = $baglanti->real_escape_string($_POST["plaka"]);
+        $sevk_tarihi = $_POST["sevk_tarihi"];
+
+        $eksik_fiyat_res = $baglanti->query("SELECT COUNT(*) AS eksik_sayi
+                                             FROM siparis_detaylari
+                                             WHERE siparis_id = $siparis_id
+                                               AND (birim_fiyat IS NULL OR birim_fiyat <= 0)");
+        $eksik_fiyat_sayi = ($eksik_fiyat_res) ? (int) $eksik_fiyat_res->fetch_assoc()['eksik_sayi'] : 0;
+
+        if ($eksik_fiyat_sayi > 0) {
+            $hata = "Bu sipariş sevk edilemez. Önce tüm satırlar için birim fiyatı 0'dan büyük şekilde kaydedin.";
         } else {
-            $hata = "Lütfen sevk edilecek miktarları girin.";
+            $sevk_var = false;
+            $hata_log = [];
+
+            if (isset($_POST["sevk_miktar"]) && is_array($_POST["sevk_miktar"])) {
+                foreach ($_POST["sevk_miktar"] as $detay_id => $miktar) {
+                    $miktar = (int) $miktar;
+                    if ($miktar > 0) {
+                        $sevk_var = true;
+
+                        // 1. Detay tablosunda sevk edilen miktarı güncelle
+                        $sql_upd = "UPDATE siparis_detaylari SET sevk_edilen_miktar = sevk_edilen_miktar + $miktar WHERE id = $detay_id";
+                        if (!$baglanti->query($sql_upd)) {
+                            $hata_log[] = "Ürün ID $detay_id güncellenemedi: " . $baglanti->error;
+                            continue;
+                        }
+
+                        // 2. Ürün adını al
+                        $detay_res = $baglanti->query("SELECT urun_adi FROM siparis_detaylari WHERE id=$detay_id");
+                        if (!$detay_res) {
+                            $hata_log[] = "Ürün adı alınamadı: " . $baglanti->error;
+                            continue;
+                        }
+
+                        $detay = $detay_res->fetch_assoc();
+                        $urun_adi = $baglanti->real_escape_string($detay['urun_adi']);
+
+                        // 3. Sevkiyat logu ekle
+                        $sql_ins = "INSERT INTO sevkiyat_detaylari (siparis_id, urun_adi, miktar, sevk_tarihi, plaka) 
+                                    VALUES ($siparis_id, '$urun_adi', $miktar, '$sevk_tarihi', '$plaka')";
+                        if (!$baglanti->query($sql_ins)) {
+                            $hata_log[] = "Sevkiyat detay eklenemedi: " . $baglanti->error;
+                        }
+                    }
+                }
+            }
+
+            if ($sevk_var && empty($hata_log)) {
+                $toplam_sip_res = $baglanti->query("SELECT SUM(miktar) as t FROM siparis_detaylari WHERE siparis_id=$siparis_id");
+                $toplam_sevk_res = $baglanti->query("SELECT SUM(sevk_edilen_miktar) as t FROM siparis_detaylari WHERE siparis_id=$siparis_id");
+
+                $toplam_sip = ($toplam_sip_res) ? $toplam_sip_res->fetch_assoc()['t'] : 0;
+                $toplam_sevk = ($toplam_sevk_res) ? $toplam_sevk_res->fetch_assoc()['t'] : 0;
+
+                $yeni_durum = ($toplam_sip > 0 && $toplam_sevk >= $toplam_sip) ? 'TeslimEdildi' : 'KismiSevk';
+                $baglanti->query("UPDATE siparisler SET durum='$yeni_durum' WHERE id=$siparis_id");
+
+                $mesaj = "✅ Sevkiyat kaydedildi. Sipariş Durumu: $yeni_durum";
+            } else {
+                if (!empty($hata_log)) {
+                    $hata = "Sevkiyat sırasında bazı hatalar oluştu: <br>" . implode("<br>", $hata_log);
+                } else {
+                    $hata = "Lütfen sevk edilecek miktarları girin.";
+                }
+            }
         }
     }
 }
@@ -202,8 +290,17 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                         if ($siparisler->num_rows > 0) {
                             while ($s = $siparisler->fetch_assoc()) {
                                 // İlerleme Hesabı
-                                $detaylar = $baglanti->query("SELECT SUM(miktar) as top, SUM(sevk_edilen_miktar) as sevk FROM siparis_detaylari WHERE siparis_id={$s['id']}")->fetch_assoc();
+                                $detaylar = $baglanti->query("
+                                    SELECT 
+                                        COUNT(*) as satir_sayisi,
+                                        SUM(miktar) as top,
+                                        SUM(sevk_edilen_miktar) as sevk,
+                                        SUM(CASE WHEN birim_fiyat IS NULL OR birim_fiyat <= 0 THEN 1 ELSE 0 END) as eksik_fiyat_sayisi
+                                    FROM siparis_detaylari
+                                    WHERE siparis_id={$s['id']}
+                                ")->fetch_assoc();
                                 $yuzde = ($detaylar['top'] > 0) ? round(($detaylar['sevk'] / $detaylar['top']) * 100) : 0;
+                                $fiyat_tamam = ((int) $detaylar['satir_sayisi'] > 0) && ((int) $detaylar['eksik_fiyat_sayisi'] === 0);
 
                                 $renk = 'secondary';
                                 if ($s['durum'] == 'Bekliyor')
@@ -219,7 +316,14 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                     <td><small class="fw-bold"><?php echo $s['cari_kod']; ?></small></td>
                                     <td>
                                         <div class="fw-bold"><?php echo $s['firma_adi']; ?></div>
-                                        <div class="small text-muted"><?php echo $s['siparis_kodu']; ?></div>
+                                        <div class="small text-muted">
+                                            <?php echo $s['siparis_kodu']; ?>
+                                            <?php if ($fiyat_tamam): ?>
+                                                <span class="badge bg-success-subtle text-success border border-success-subtle ms-1">Fiyat Tamam</span>
+                                            <?php else: ?>
+                                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1">Fiyat Eksik</span>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                     <td>
                                         <?php echo date("d.m.Y", strtotime($s['siparis_tarihi'])); ?>
@@ -241,11 +345,22 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                             onclick="detayAc(<?php echo $s['id']; ?>)">
                                             <i class="fas fa-eye"></i> Detay
                                         </button>
+                                        <button class="btn btn-sm btn-warning text-dark"
+                                            onclick='fiyatAc(<?php echo (int) $s["id"]; ?>, <?php echo json_encode($s["siparis_kodu"]); ?>)'>
+                                            <i class="fas fa-tags"></i> Fiyatlandır
+                                        </button>
                                         <?php if ($yuzde < 100) { ?>
-                                            <button class="btn btn-sm btn-dark"
-                                                onclick="sevkAc(<?php echo $s['id']; ?>, '<?php echo $s['siparis_kodu']; ?>')">
-                                                <i class="fas fa-truck"></i> Sevk Et
-                                            </button>
+                                            <?php if ($fiyat_tamam): ?>
+                                                <button class="btn btn-sm btn-dark"
+                                                    onclick='sevkAc(<?php echo (int) $s["id"]; ?>, <?php echo json_encode($s["siparis_kodu"]); ?>)'>
+                                                    <i class="fas fa-truck"></i> Sevk Et
+                                                </button>
+                                            <?php else: ?>
+                                                <button class="btn btn-sm btn-dark" disabled title="Önce fiyatlandırma yapın.">
+                                                    <i class="fas fa-truck"></i> Sevk Et
+                                                </button>
+                                                <div class="small text-danger mt-1">Önce fiyatlandırma gerekli</div>
+                                            <?php endif; ?>
                                         <?php } ?>
                                     </td>
                                 </tr>
@@ -297,6 +412,16 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                         <div class="mb-3">
                             <label>Notlar</label>
                             <input type="text" name="aciklama" class="form-control" placeholder="Örn: Acil sipariş">
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label>Alıcı Adı / Soyadı</label>
+                                <input type="text" name="alici_adi" class="form-control" placeholder="Teslim alacak kişi/firma">
+                            </div>
+                            <div class="col-md-6">
+                                <label>Planlanan Ödeme Tarihi</label>
+                                <input type="date" name="odeme_tarihi" class="form-control">
+                            </div>
                         </div>
                         <hr>
                         <h6>Ürünler</h6>
@@ -365,6 +490,33 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                     </div>
                     <div class="modal-footer">
                         <button type="submit" name="sevkiyat_gir" class="btn btn-primary">Sevkiyatı Kaydet</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: FİYATLANDIRMA -->
+    <div class="modal fade" id="fiyatModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form method="post">
+                    <div class="modal-header bg-warning text-dark">
+                        <h5 class="modal-title"><i class="fas fa-tags me-2"></i>Sipariş Fiyatlandırma</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="siparis_id" id="fiyatSiparisId">
+                        <p id="fiyatBaslik" class="fw-bold text-primary"></p>
+                        <div class="alert alert-info py-2 small">
+                            Tüm satırlar için birim fiyat <strong>0'dan büyük</strong> olmalıdır. Fiyatlandırma tamamlanmadan sevk işlemi yapılamaz.
+                        </div>
+                        <div id="fiyatUrunListesi">Yükleniyor...</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" name="fiyatlandirma_kaydet" class="btn btn-warning text-dark fw-bold">
+                            <i class="fas fa-save me-1"></i> Fiyatları Kaydet
+                        </button>
                     </div>
                 </form>
             </div>
@@ -472,6 +624,33 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
             document.getElementById('urunListesi').appendChild(row);
         }
 
+        function formatTl(value) {
+            const fixed = Number(value).toFixed(2);
+            const parts = fixed.split('.');
+            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+            return parts.join(',') + ' TL';
+        }
+
+        function updateFiyatSatirToplam(inputEl) {
+            const row = inputEl.closest('tr');
+            if (!row) return;
+
+            const hucre = row.querySelector('.satir-toplam-hucre');
+            if (!hucre) return;
+
+            const miktar = parseFloat(inputEl.dataset.miktar || '0');
+            const fiyatRaw = (inputEl.value || '').replace(',', '.');
+            const fiyat = parseFloat(fiyatRaw);
+
+            if (!Number.isFinite(fiyat) || fiyat <= 0) {
+                hucre.textContent = '0,00 TL';
+                return;
+            }
+
+            const toplam = miktar * fiyat;
+            hucre.textContent = formatTl(toplam);
+        }
+
         function sevkAc(id, kod) {
             document.getElementById('sevkSiparisId').value = id;
             document.getElementById('sevkBaslik').textContent = kod + ' Nolu Sipariş';
@@ -484,6 +663,29 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                     new bootstrap.Modal(document.getElementById('sevkModal')).show();
                 });
         }
+
+        function fiyatAc(id, kod) {
+            document.getElementById('fiyatSiparisId').value = id;
+            document.getElementById('fiyatBaslik').textContent = kod + ' Nolu Sipariş Fiyatlandırması';
+
+            fetch('siparis_ajax.php?islem=getir_fiyatlandirma&id=' + id)
+                .then(r => r.text())
+                .then(html => {
+                    document.getElementById('fiyatUrunListesi').innerHTML = html;
+
+                    document.querySelectorAll('#fiyatUrunListesi .birim-fiyat-input').forEach(function (inp) {
+                        updateFiyatSatirToplam(inp);
+                    });
+
+                    new bootstrap.Modal(document.getElementById('fiyatModal')).show();
+                });
+        }
+
+        document.addEventListener('input', function (e) {
+            if (e.target.classList.contains('birim-fiyat-input')) {
+                updateFiyatSatirToplam(e.target);
+            }
+        });
 
         function detayAc(id) {
             fetch('siparis_ajax.php?islem=getir_detay&id=' + id)
