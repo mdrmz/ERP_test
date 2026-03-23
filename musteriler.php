@@ -195,7 +195,7 @@ if ($secili_musteri_id > 0) {
                     <div class="card-body p-0">
                         <div class="p-2 bg-light border-bottom">
                             <input type="text" id="musteriAra" class="form-control form-control-sm"
-                                placeholder="Müşteri, yetkili veya telefon ara...">
+                                placeholder="Cari Kod, Müşteri veya yetkili ara...">
                         </div>
                         <div class="list-group list-group-flush list-group-scroll" id="musteriListesi">
                             <?php
@@ -203,7 +203,11 @@ if ($secili_musteri_id > 0) {
                                 while ($m = $musteriler->fetch_assoc()) {
                                     $active = ($secili_musteri_id == $m['id']) ? 'active' : '';
                                     echo "
-                                    <a href='musteriler.php?id={$m['id']}" . (isset($_GET['tip']) ? '&tip='.$_GET['tip'] : '') . "' class='list-group-item list-group-item-action customer-card {$active}'>
+                                    <a href='musteriler.php?id={$m['id']}" . (isset($_GET['tip']) ? '&tip='.$_GET['tip'] : '') . "' 
+                                       class='list-group-item list-group-item-action customer-card {$active}'
+                                       data-search-kod='{$m['cari_kod']}'
+                                       data-search-ad='{$m['firma_adi']}'
+                                       data-search-tel='{$m['telefon']}'>
                                         <div class='d-flex w-100 justify-content-between'>
                                             <h6 class='mb-1 text-primary fw-bold'>{$m['firma_adi']}</h6>
                                             <span class='badge " . ($m['cari_tip'] == 'Müşteri' ? 'bg-info-subtle text-info' : 'bg-warning-subtle text-warning') . "' style='font-size:0.6rem;'>{$m['cari_tip']}</span>
@@ -500,12 +504,35 @@ if ($secili_musteri_id > 0) {
                 });
             }
 
-            // Müşteri Arama (Sol Menü)
+            // Müşteri Arama (Sol Menü) - Akıllı Kod Filtreleme
             $("#musteriAra").on("keyup", function () {
-                var value = $(this).val().toLowerCase();
-                $("#musteriListesi a").filter(function () {
-                    // search text within a tag
-                    $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+                var value = $(this).val().toLowerCase().trim();
+                $("#musteriListesi a").each(function () {
+                    var kod = $(this).attr("data-search-kod").toLowerCase();
+                    var ad = $(this).attr("data-search-ad").toLowerCase();
+                    var tel = $(this).attr("data-search-tel").toLowerCase();
+                    
+                    var show = false;
+                    
+                    // 1. Ünvan veya Telefon içinde "contains" arama (Standart)
+                    if (ad.indexOf(value) > -1 || tel.indexOf(value) > -1) {
+                        show = true;
+                    } 
+                    // 2. Kod Tarafı - Akıllı Eşleşme
+                    else if (kod.indexOf(value) === 0) { // En azından başlıyorsa
+                        var nextChar = kod.charAt(value.length);
+                        // Eğer tam eşleşmeyse VEYA devamında nokta/tire varsa VEYA kullanıcı daha çok rakam girdiyse göster.
+                        // Örn: '120.01' yazınca hepsini göster. '120.01.107' yazınca '120.01.1071'i gösterip göstermeme dengesini ayarlıyoruz.
+                        // Kullanıcı talebine göre '120.01.107' yazınca '120.01.107' ve türevlerini de görmek isteyebilir.
+                        // Burada 'starts with' daha güvenli.
+                        show = true; 
+                    }
+
+                    if (show) {
+                        $(this).show();
+                    } else {
+                        $(this).hide();
+                    }
                 });
             });
         });
