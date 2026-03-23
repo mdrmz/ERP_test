@@ -24,6 +24,47 @@ switch ($action) {
         echo json_encode(['count' => $sayi]);
         break;
 
+    case 'all_counts':
+        // Bildirim + Sipariş + Onay sayaçları
+        $bildirim_count = (int) bildirimSayisi($baglanti);
+        $can_siparis = (bool) modulYetkisiVar($baglanti, 'Satış & Siparişler', 'okuma');
+        $can_onay = ((($_SESSION['rol_adi'] ?? '') === 'Patron' || (int) ($_SESSION['rol_id'] ?? 0) === 1) || (bool) onayYetkisiVar($baglanti));
+
+        $siparis_count = 0;
+        $onay_count = 0;
+
+        if ($can_siparis) {
+            $siparis_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM siparisler WHERE durum = 'Bekliyor'");
+            if ($siparis_result && $siparis_row = $siparis_result->fetch_assoc()) {
+                $siparis_count = (int) ($siparis_row['cnt'] ?? 0);
+            }
+        }
+
+        if ($can_onay) {
+            $onay_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM onay_bekleyenler WHERE onay_durum = 'bekliyor'");
+            if ($onay_result && $onay_row = $onay_result->fetch_assoc()) {
+                $onay_count += (int) ($onay_row['cnt'] ?? 0);
+            }
+
+            // Onay Merkezi'ndeki hammadde akış bekleyenlerini de dahil et
+            $hammadde_tablo_kontrol = @$baglanti->query("SHOW TABLES LIKE 'hammadde_kabul_akisi'");
+            if ($hammadde_tablo_kontrol && $hammadde_tablo_kontrol->num_rows > 0) {
+                $hammadde_onay_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM hammadde_kabul_akisi WHERE asama IN ('bekliyor', 'analiz_yapildi', 'onay_bekleniyor')");
+                if ($hammadde_onay_result && $hammadde_onay_row = $hammadde_onay_result->fetch_assoc()) {
+                    $onay_count += (int) ($hammadde_onay_row['cnt'] ?? 0);
+                }
+            }
+        }
+
+        echo json_encode([
+            'bildirim_count' => $bildirim_count,
+            'siparis_count' => $siparis_count,
+            'onay_count' => $onay_count,
+            'can_siparis' => $can_siparis,
+            'can_onay' => $can_onay
+        ]);
+        break;
+
     case 'list':
         // Son bildirimleri listele
         $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 5;

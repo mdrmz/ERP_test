@@ -102,6 +102,17 @@ if (isset($_POST["fiyatlandirma_kaydet"])) {
         if ($siparis_id <= 0) {
             $hata = "Geçersiz sipariş bilgisi.";
         } else {
+            $siparis_durum = '';
+            $siparis_durum_res = $baglanti->query("SELECT durum FROM siparisler WHERE id = $siparis_id LIMIT 1");
+            if (!$siparis_durum_res || $siparis_durum_res->num_rows === 0) {
+                $hata = "Sipariş bulunamadı.";
+            } else {
+                $siparis_durum = $siparis_durum_res->fetch_assoc()['durum'] ?? '';
+            }
+
+            if ($siparis_durum === 'IptalEdildi') {
+                $hata = "İptal edilen siparişte fiyatlandırma yapılamaz.";
+            } else {
             $satirlar_res = $baglanti->query("SELECT id, miktar FROM siparis_detaylari WHERE siparis_id = $siparis_id");
             if (!$satirlar_res || $satirlar_res->num_rows === 0) {
                 $hata = "Fiyatlandırılacak sipariş satırı bulunamadı.";
@@ -152,6 +163,7 @@ if (isset($_POST["fiyatlandirma_kaydet"])) {
 }
 
 // --- 4. SEVKİYAT GİRİŞİ (Parçalı Sevkiyat) ---
+}
 if (isset($_POST["sevkiyat_gir"])) {
     if (!yazmaYetkisiVar($baglanti)) {
         $hata = "Bu işlem için yazma yetkiniz bulunmuyor.";
@@ -159,6 +171,20 @@ if (isset($_POST["sevkiyat_gir"])) {
         $siparis_id = (int) $_POST["siparis_id"];
         $plaka = $baglanti->real_escape_string($_POST["plaka"]);
         $sevk_tarihi = $_POST["sevk_tarihi"];
+
+        $siparis_durum = '';
+        $siparis_durum_res = $baglanti->query("SELECT durum FROM siparisler WHERE id = $siparis_id LIMIT 1");
+        if (!$siparis_durum_res || $siparis_durum_res->num_rows === 0) {
+            $hata = "Sipariş bulunamadı.";
+        } else {
+            $siparis_durum = $siparis_durum_res->fetch_assoc()['durum'] ?? '';
+        }
+
+        if ($siparis_durum === 'IptalEdildi') {
+            $hata = "İptal edilen sipariş sevk edilemez.";
+        } elseif ($siparis_durum === 'TeslimEdildi') {
+            $hata = "Teslim edilmiş sipariş için tekrar sevkiyat yapılamaz.";
+        } else {
 
         $eksik_fiyat_res = $baglanti->query("SELECT COUNT(*) AS eksik_sayi
                                              FROM siparis_detaylari
@@ -224,10 +250,43 @@ if (isset($_POST["sevkiyat_gir"])) {
                 }
             }
         }
+        }
     }
 }
 
 // VERİLERİ ÇEK
+if (isset($_POST["siparis_iptal"])) {
+    if (!yazmaYetkisiVar($baglanti)) {
+        $hata = "Bu işlem için yazma yetkiniz bulunmuyor.";
+    } else {
+        $siparis_id = isset($_POST["siparis_id"]) ? (int) $_POST["siparis_id"] : 0;
+        if ($siparis_id <= 0) {
+            $hata = "Geçersiz sipariş bilgisi.";
+        } else {
+            $siparis_res = $baglanti->query("SELECT siparis_kodu, durum FROM siparisler WHERE id = $siparis_id LIMIT 1");
+            if (!$siparis_res || $siparis_res->num_rows === 0) {
+                $hata = "Sipariş bulunamadı.";
+            } else {
+                $siparis = $siparis_res->fetch_assoc();
+                $durum = $siparis['durum'] ?? '';
+                $siparis_kodu = $siparis['siparis_kodu'] ?? ("#" . $siparis_id);
+
+                if ($durum === 'IptalEdildi') {
+                    $hata = "Sipariş zaten iptal edilmiş.";
+                } elseif ($durum === 'TeslimEdildi') {
+                    $hata = "Teslim edilmiş sipariş iptal edilemez.";
+                } else {
+                    if ($baglanti->query("UPDATE siparisler SET durum = 'IptalEdildi' WHERE id = $siparis_id")) {
+                        $mesaj = "✅ Sipariş iptal edildi: $siparis_kodu";
+                    } else {
+                        $hata = "Sipariş iptal edilirken hata oluştu: " . $baglanti->error;
+                    }
+                }
+            }
+        }
+    }
+}
+
 $musteriler = $baglanti->query("SELECT * FROM musteriler ORDER BY firma_adi");
 $siparisler = $baglanti->query("SELECT s.*, m.firma_adi, m.cari_kod FROM siparisler s JOIN musteriler m ON s.musteri_id = m.id ORDER BY s.siparis_tarihi DESC");
 $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dropdown için)
@@ -246,6 +305,50 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
         .progress-bar-striped {
             transition: width .6s ease;
         }
+
+        .siparis-islem-hucre {
+            min-width: 320px;
+        }
+
+        .siparis-islem-listesi {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .siparis-islem-listesi .btn {
+            white-space: nowrap;
+        }
+
+        .siparis-islem-listesi form {
+            margin: 0;
+            display: inline-flex;
+        }
+
+        .siparis-islem-uyari {
+            flex: 0 0 100%;
+            font-size: 0.78rem;
+            line-height: 1.2;
+            margin-top: 2px;
+        }
+
+        @media (max-width: 992px) {
+            .siparis-islem-hucre {
+                min-width: 260px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .siparis-islem-hucre {
+                min-width: 240px;
+            }
+
+            .siparis-islem-listesi .btn {
+                font-size: 0.78rem;
+                padding: 0.2rem 0.45rem;
+            }
+        }
     </style>
 </head>
 
@@ -254,9 +357,9 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
 
     <div class="container py-4">
 
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
             <h2><i class="fas fa-shopping-bag text-primary"></i> Satış & Sipariş Yönetimi</h2>
-            <div>
+            <div class="d-flex flex-wrap gap-2">
                 <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#yeniMusteriModal">
                     <i class="fas fa-user-plus"></i> Müşteri Ekle
                 </button>
@@ -301,6 +404,7 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                 ")->fetch_assoc();
                                 $yuzde = ($detaylar['top'] > 0) ? round(($detaylar['sevk'] / $detaylar['top']) * 100) : 0;
                                 $fiyat_tamam = ((int) $detaylar['satir_sayisi'] > 0) && ((int) $detaylar['eksik_fiyat_sayisi'] === 0);
+                                $iptal_durumu = ($s['durum'] == 'IptalEdildi');
 
                                 $renk = 'secondary';
                                 if ($s['durum'] == 'Bekliyor')
@@ -311,6 +415,8 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                     $renk = 'primary';
                                 if ($s['durum'] == 'TeslimEdildi')
                                     $renk = 'success';
+                                if ($s['durum'] == 'IptalEdildi')
+                                    $renk = 'danger';
                                 ?>
                                 <tr>
                                     <td><small class="fw-bold"><?php echo $s['cari_kod']; ?></small></td>
@@ -340,11 +446,13 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                             <?php echo $yuzde; ?> Tamamlandı
                                         </small>
                                     </td>
-                                    <td>
+                                    <td class="siparis-islem-hucre">
+                                        <div class="siparis-islem-listesi d-flex flex-wrap gap-1 align-items-center">
                                         <button class="btn btn-sm btn-info text-white"
                                             onclick="detayAc(<?php echo $s['id']; ?>)">
                                             <i class="fas fa-eye"></i> Detay
                                         </button>
+                                        <?php if (!$iptal_durumu): ?>
                                         <button class="btn btn-sm btn-warning text-dark"
                                             onclick='fiyatAc(<?php echo (int) $s["id"]; ?>, <?php echo json_encode($s["siparis_kodu"]); ?>)'>
                                             <i class="fas fa-tags"></i> Fiyatlandır
@@ -359,9 +467,22 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                                 <button class="btn btn-sm btn-dark" disabled title="Önce fiyatlandırma yapın.">
                                                     <i class="fas fa-truck"></i> Sevk Et
                                                 </button>
-                                                <div class="small text-danger mt-1">Önce fiyatlandırma gerekli</div>
                                             <?php endif; ?>
                                         <?php } ?>
+                                        <?php if ($s['durum'] != 'TeslimEdildi'): ?>
+                                            <form method="post" class="d-inline"
+                                                onsubmit="return siparisIptalOnay(this, '<?php echo addslashes($s['siparis_kodu']); ?>');">
+                                                <input type="hidden" name="siparis_id" value="<?php echo (int) $s['id']; ?>">
+                                                <input type="hidden" name="siparis_iptal" value="1">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                    <i class="fas fa-ban"></i> Siparişi İptal Et
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+                                        <?php else: ?>
+                                            <span class="badge bg-danger">Sipariş İptal Edildi</span>
+                                        <?php endif; ?>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php }
@@ -649,6 +770,35 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
 
             const toplam = miktar * fiyat;
             hucre.textContent = formatTl(toplam);
+        }
+
+        function siparisIptalOnay(form, siparisKodu) {
+            const onayMesaji = siparisKodu + ' nolu sipari\u015fi iptal etmek istedi\u011finize emin misiniz?';
+
+            if (typeof Swal === 'undefined') {
+                const onay = confirm(onayMesaji);
+                if (onay && form) {
+                    form.submit();
+                }
+                return false;
+            }
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Sipari\u015fi iptal et',
+                text: onayMesaji,
+                showCancelButton: true,
+                confirmButtonText: 'Evet, iptal et',
+                cancelButtonText: 'Vazge\u00e7',
+                confirmButtonColor: '#dc3545',
+                cancelButtonColor: '#6c757d'
+            }).then((result) => {
+                if (result.isConfirmed && form) {
+                    form.submit();
+                }
+            });
+
+            return false;
         }
 
         function sevkAc(id, kod) {
