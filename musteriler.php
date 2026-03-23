@@ -47,6 +47,54 @@ if (isset($_POST["musteri_ekle"])) {
     }
 }
 
+// MÜŞTERİ / TEDARİKÇİ DÜZENLE
+if (isset($_POST["musteri_guncelle"])) {
+    $duzenle_id = isset($_POST["duzenle_id"]) ? (int) $_POST["duzenle_id"] : 0;
+    $kod = $baglanti->real_escape_string($_POST["cari_kod"] ?? "");
+    $tip = (($_POST["cari_tip"] ?? "Müşteri") === "Tedarikçi") ? "Tedarikçi" : "Müşteri";
+    $ad = $baglanti->real_escape_string($_POST["firma_adi"] ?? "");
+    $yetkili = $baglanti->real_escape_string($_POST["yetkili_kisi"] ?? "");
+    $tel = $baglanti->real_escape_string($_POST["telefon"] ?? "");
+    $eposta = $baglanti->real_escape_string($_POST["eposta"] ?? "");
+    $vd = $baglanti->real_escape_string($_POST["vergi_dairesi"] ?? "");
+    $vn = $baglanti->real_escape_string($_POST["vergi_no"] ?? "");
+    $il = $baglanti->real_escape_string($_POST["il"] ?? "");
+    $ilce = $baglanti->real_escape_string($_POST["ilce"] ?? "");
+    $adres = $baglanti->real_escape_string($_POST["adres"] ?? "");
+    $notlar = $baglanti->real_escape_string($_POST["ozel_notlar"] ?? "");
+
+    if ($duzenle_id <= 0 || $kod === "" || $ad === "") {
+        $hata = "⚠️ Güncelleme için zorunlu alanları doldurun.";
+    } else {
+        // Aynı cari kod başka kayıtta var mı kontrolü (self-exclude)
+        $kontrol = $baglanti->query("SELECT id FROM musteriler WHERE cari_kod = '$kod' AND id <> $duzenle_id");
+        if ($kontrol && $kontrol->num_rows > 0) {
+            $hata = "⚠️ Bu cari kod ($kod) başka bir kayıtta kullanılıyor!";
+        } else {
+            $sql = "UPDATE musteriler 
+                    SET cari_kod = '$kod',
+                        cari_tip = '$tip',
+                        firma_adi = '$ad',
+                        yetkili_kisi = '$yetkili',
+                        telefon = '$tel',
+                        eposta = '$eposta',
+                        vergi_dairesi = '$vd',
+                        vergi_no = '$vn',
+                        il = '$il',
+                        ilce = '$ilce',
+                        adres = '$adres',
+                        ozel_notlar = '$notlar'
+                    WHERE id = $duzenle_id";
+
+            if ($baglanti->query($sql)) {
+                $mesaj = "✅ Kayıt Güncellendi: $ad ($kod)";
+            } else {
+                $hata = "Güncelleme hatası: " . $baglanti->error;
+            }
+        }
+    }
+}
+
 // FİLTRELEME
 $where = " WHERE 1=1 ";
 if(isset($_GET['tip']) && $_GET['tip'] == 'tedarikci') {
@@ -268,9 +316,14 @@ if ($secili_musteri_id > 0) {
                                 </div>
                                 <?php endif; ?>
                             </div>
-                            <a href="pazarlama.php" class="btn btn-outline-warning btn-sm">
-                                <i class="fas fa-shopping-cart me-1"></i> Sipariş Gir
-                            </a>
+                            <div class="d-flex flex-column gap-2">
+                                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#duzenleMusteriModal">
+                                    <i class="fas fa-pen-to-square me-1"></i> Düzenle
+                                </button>
+                                <a href="pazarlama.php?musteri_id=<?php echo (int) $secili_musteri['id']; ?>" class="btn btn-outline-warning btn-sm">
+                                    <i class="fas fa-shopping-cart me-1"></i> Sipariş Gir
+                                </a>
+                            </div>
                         </div>
                     </div>
 
@@ -453,6 +506,99 @@ if ($secili_musteri_id > 0) {
             </div>
         </div>
     </div>
+
+    <?php if ($secili_musteri): ?>
+    <!-- MODAL: MÜŞTERİ DÜZENLE -->
+    <div class="modal fade" id="duzenleMusteriModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="post">
+                    <input type="hidden" name="duzenle_id" value="<?php echo (int) $secili_musteri['id']; ?>">
+                    <div class="modal-header bg-warning text-dark">
+                        <h5 class="modal-title"><i class="fas fa-pen-to-square me-2"></i>Müşteri / Tedarikçi Düzenle</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body bg-light">
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Cari Kod *</label>
+                                <input type="text" name="cari_kod" class="form-control" required
+                                    value="<?php echo htmlspecialchars($secili_musteri['cari_kod'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Cari Tip *</label>
+                                <select name="cari_tip" class="form-select" required>
+                                    <option value="Müşteri" <?php echo (($secili_musteri['cari_tip'] ?? '') === 'Müşteri') ? 'selected' : ''; ?>>Müşteri</option>
+                                    <option value="Tedarikçi" <?php echo (($secili_musteri['cari_tip'] ?? '') === 'Tedarikçi') ? 'selected' : ''; ?>>Tedarikçi</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Firma / Kurum Ünvanı *</label>
+                            <input type="text" name="firma_adi" class="form-control" required
+                                value="<?php echo htmlspecialchars($secili_musteri['firma_adi'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Yetkili Kişi</label>
+                                <input type="text" name="yetkili_kisi" class="form-control"
+                                    value="<?php echo htmlspecialchars($secili_musteri['yetkili_kisi'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Telefon</label>
+                                <input type="text" name="telefon" class="form-control"
+                                    value="<?php echo htmlspecialchars($secili_musteri['telefon'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">E-Posta</label>
+                            <input type="email" name="eposta" class="form-control"
+                                value="<?php echo htmlspecialchars($secili_musteri['eposta'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Vergi Dairesi</label>
+                                <input type="text" name="vergi_dairesi" class="form-control"
+                                    value="<?php echo htmlspecialchars($secili_musteri['vergi_dairesi'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">Vergi No</label>
+                                <input type="text" name="vergi_no" class="form-control"
+                                    value="<?php echo htmlspecialchars($secili_musteri['vergi_no'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">İl</label>
+                                <input type="text" name="il" class="form-control"
+                                    value="<?php echo htmlspecialchars($secili_musteri['il'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold small">İlçe</label>
+                                <input type="text" name="ilce" class="form-control"
+                                    value="<?php echo htmlspecialchars($secili_musteri['ilce'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Açık Adres</label>
+                            <textarea name="adres" class="form-control" rows="2"><?php echo htmlspecialchars($secili_musteri['adres'] ?? '', ENT_QUOTES, 'UTF-8'); ?></textarea>
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label fw-bold small">Özel CRM Notları</label>
+                            <textarea name="ozel_notlar" class="form-control" rows="2"><?php echo htmlspecialchars($secili_musteri['ozel_notlar'] ?? '', ENT_QUOTES, 'UTF-8'); ?></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                        <button type="submit" name="musteri_guncelle" class="btn btn-warning">
+                            <i class="fas fa-save me-1"></i> Güncelle
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
