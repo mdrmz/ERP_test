@@ -13,6 +13,7 @@ if (!isset($_SESSION["oturum"])) {
 $sayfa = basename($_SERVER['PHP_SELF']);
 $rol_adi = isset($_SESSION["rol_adi"]) ? $_SESSION["rol_adi"] : '';
 $rol_id = isset($_SESSION["rol_id"]) ? (int) $_SESSION["rol_id"] : 0;
+$is_patron = ($rol_adi === 'Patron' || $rol_id === 1);
 
 // Bildirim sayısını al
 $bildirim_sayisi = 0;
@@ -28,7 +29,7 @@ if (!function_exists('navbarModulGoster')) {
         $user_id = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
 
         // Patron her şeyi görebilir
-        if ($rol_adi === 'Patron') {
+        if ($rol_adi === 'Patron' || $rol_id === 1) {
             return true;
         }
 
@@ -51,6 +52,35 @@ if (!function_exists('navbarModulGoster')) {
                 WHERE rol_id = $rol_id AND modul_adi = '$modul_adi_esc' AND okuma = 1";
         $result = $baglanti->query($sql);
         return ($result && $result->num_rows > 0);
+    }
+}
+
+$can_siparis = navbarModulGoster($baglanti, 'Satış & Siparişler');
+$can_onay = $is_patron || (function_exists('onayYetkisiVar') ? onayYetkisiVar($baglanti) : false);
+
+$siparis_bekleyen_sayisi = 0;
+$onay_bekleyen_sayisi = 0;
+
+if ($can_siparis) {
+    $siparis_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM siparisler WHERE durum = 'Bekliyor'");
+    if ($siparis_result && $siparis_row = $siparis_result->fetch_assoc()) {
+        $siparis_bekleyen_sayisi = (int) ($siparis_row['cnt'] ?? 0);
+    }
+}
+
+if ($can_onay) {
+    $onay_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM onay_bekleyenler WHERE onay_durum = 'bekliyor'");
+    if ($onay_result && $onay_row = $onay_result->fetch_assoc()) {
+        $onay_bekleyen_sayisi += (int) ($onay_row['cnt'] ?? 0);
+    }
+
+    // Onay Merkezi'ndeki hammadde akış bekleyenlerini de dahil et
+    $hammadde_tablo_kontrol = @$baglanti->query("SHOW TABLES LIKE 'hammadde_kabul_akisi'");
+    if ($hammadde_tablo_kontrol && $hammadde_tablo_kontrol->num_rows > 0) {
+        $hammadde_onay_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM hammadde_kabul_akisi WHERE asama IN ('bekliyor', 'analiz_yapildi', 'onay_bekleniyor')");
+        if ($hammadde_onay_result && $hammadde_onay_row = $hammadde_onay_result->fetch_assoc()) {
+            $onay_bekleyen_sayisi += (int) ($hammadde_onay_row['cnt'] ?? 0);
+        }
     }
 }
 ?>
@@ -712,7 +742,13 @@ if (!function_exists('navbarModulGoster')) {
                 <?php if (navbarModulGoster($baglanti, 'Satış & Siparişler')) { ?>
                     <a href="siparisler.php" class="nav-link <?php if ($sayfa == 'siparisler.php')
                         echo 'active'; ?>">
-                        <i class="fas fa-shopping-bag"></i> Siparişler (İdari)
+                        <div class="d-flex justify-content-between w-100 align-items-center">
+                            <span><i class="fas fa-shopping-bag"></i> Siparişler (İdari)</span>
+                            <span id="siparisBadge" class="badge bg-danger rounded-pill"
+                                style="<?php echo $siparis_bekleyen_sayisi > 0 ? '' : 'display: none;'; ?>">
+                                <?php echo $siparis_bekleyen_sayisi; ?>
+                            </span>
+                        </div>
                     </a>
                 <?php } ?>
             </div>
@@ -788,39 +824,30 @@ if (!function_exists('navbarModulGoster')) {
             </div>
         <?php } ?>
 
-        <?php if ($rol_adi === 'Patron') {
-            // Bekleyen onay sayısını sidebar için çek (onay_bekleyenler tablosundan)
-            $pending_count_sidebar = 0;
-            $pending_result_s = @$baglanti->query("SELECT COUNT(*) as cnt FROM onay_bekleyenler WHERE onay_durum = 'bekliyor'");
-            if ($pending_result_s) {
-                $row_data = $pending_result_s->fetch_assoc();
-                $pending_count_sidebar = $row_data['cnt'] ?? 0;
-            }
-            ?>
+        <?php if ($can_onay) { ?>
             <div class="admin-box">
                 <div class="nav-group-title"><i class="fas fa-shield-halved"></i> Yönetici</div>
                 <a href="onay_merkezi.php" class="nav-link <?php if ($sayfa == 'onay_merkezi.php')
                     echo 'active'; ?>">
                     <div class="d-flex justify-content-between w-100 align-items-center">
                         <span><i class="fas fa-check-double"></i> Onay Merkezi</span>
-                        <?php if ($pending_count_sidebar > 0): ?>
-                            <span class="badge bg-danger rounded-pill">
-                                <?php echo $pending_count_sidebar; ?>
-                            </span>
-                        <?php endif; ?>
+                        <span id="onayBadgeSidebar" class="badge bg-danger rounded-pill"
+                            style="<?php echo $onay_bekleyen_sayisi > 0 ? '' : 'display: none;'; ?>">
+                            <?php echo $onay_bekleyen_sayisi; ?>
+                        </span>
                     </div>
                 </a>
-                <a href="islem_gecmisi.php" class="nav-link <?php if ($sayfa == 'islem_gecmisi.php')
-                    echo 'active'; ?>">
-                    <i class="fas fa-history"></i> İşlem Geçmişi
-                </a>
-                <a href="kullanici_yonetimi.php" class="nav-link <?php if ($sayfa == 'kullanici_yonetimi.php')
-                    echo 'active'; ?>">
-                    <i class="fas fa-users-gear"></i> Kullanıcılar
-                </a>
-
+                <?php if ($is_patron) { ?>
+                    <a href="islem_gecmisi.php" class="nav-link <?php if ($sayfa == 'islem_gecmisi.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-history"></i> İşlem Geçmişi
+                    </a>
+                    <a href="kullanici_yonetimi.php" class="nav-link <?php if ($sayfa == 'kullanici_yonetimi.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-users-gear"></i> Kullanıcılar
+                    </a>
+                <?php } ?>
             </div>
-
         <?php } ?>
     </div>
 
@@ -954,33 +981,25 @@ if (!function_exists('navbarModulGoster')) {
             </a>
         <?php } ?>
 
-        <?php if ($rol_adi === 'Patron') {
-            // Bekleyen onay sayısını çek (onay_bekleyenler tablosundan)
-            $pending_count = 0;
-            $pending_result = @$baglanti->query("SELECT COUNT(*) as cnt FROM onay_bekleyenler WHERE onay_durum = 'bekliyor'");
-            if ($pending_result) {
-                $pending_count = $pending_result->fetch_assoc()['cnt'];
-            }
-            ?>
+        <?php if ($can_onay) { ?>
             <a href="onay_merkezi.php" class="menu-item <?php if ($sayfa == 'onay_merkezi.php')
                 echo 'active'; ?>" style="position: relative;">
                 <i class="fas fa-check-double"></i> Onay
-                <?php if ($pending_count > 0): ?>
-                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-                        style="font-size: 0.5rem; padding: 0.25em 0.4em;">
-                        <?php echo $pending_count; ?>
-                    </span>
-                <?php endif; ?>
+                <span id="onayBadgeMobile" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                    style="font-size: 0.5rem; padding: 0.25em 0.4em; <?php echo $onay_bekleyen_sayisi > 0 ? '' : 'display: none;'; ?>">
+                    <?php echo $onay_bekleyen_sayisi; ?>
+                </span>
             </a>
-            <a href="islem_gecmisi.php" class="menu-item <?php if ($sayfa == 'islem_gecmisi.php')
-                echo 'active'; ?>">
-                <i class="fas fa-history"></i> Geçmiş
-            </a>
-            <a href="kullanici_yonetimi.php" class="menu-item <?php if ($sayfa == 'kullanici_yonetimi.php')
-                echo 'active'; ?>">
-                <i class="fas fa-users"></i> Kullanıcı
-            </a>
-
+            <?php if ($is_patron) { ?>
+                <a href="islem_gecmisi.php" class="menu-item <?php if ($sayfa == 'islem_gecmisi.php')
+                    echo 'active'; ?>">
+                    <i class="fas fa-history"></i> Geçmiş
+                </a>
+                <a href="kullanici_yonetimi.php" class="menu-item <?php if ($sayfa == 'kullanici_yonetimi.php')
+                    echo 'active'; ?>">
+                    <i class="fas fa-users"></i> Kullanıcı
+                </a>
+            <?php } ?>
         <?php } ?>
     </div>
 </div>
@@ -993,7 +1012,9 @@ if (!function_exists('navbarModulGoster')) {
 
     // === BİLDİRİM SİSTEMİ ===
     let bildirimAcik = false;
-    let sonBildirimSayisi = <?php echo $bildirim_sayisi; ?>;
+    let sonBildirimSayisi = <?php echo (int) $bildirim_sayisi; ?>;
+    let sonSiparisSayisi = <?php echo $can_siparis ? (int) $siparis_bekleyen_sayisi : 0; ?>;
+    let sonOnaySayisi = <?php echo $can_onay ? (int) $onay_bekleyen_sayisi : 0; ?>;
 
     function toggleBildirimDropdown() {
         const dropdown = document.getElementById('bildirimDropdown');
@@ -1062,39 +1083,66 @@ if (!function_exists('navbarModulGoster')) {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: 'action=read_all'
         }).then(() => {
-            document.getElementById('bildirimBadge').style.display = 'none';
-            document.getElementById('bildirimBadge').innerText = '0';
+            badgeGuncelle('bildirimBadge', 0, true);
+            sonBildirimSayisi = 0;
             bildirimleriYukle();
+            bildirimKontrol();
         });
     }
 
-    // Her 30 saniyede bildirim kontrolü
+    function badgeGuncelle(id, adet, aktif) {
+        const badge = document.getElementById(id);
+        if (!badge) return;
+
+        if (aktif && adet > 0) {
+            badge.style.display = 'inline-block';
+            badge.innerText = adet;
+        } else {
+            badge.style.display = 'none';
+            badge.innerText = '0';
+        }
+    }
+
+    function onayBadgeGuncelle(adet, aktif) {
+        ['onayBadgeSidebar', 'onayBadgeMobile'].forEach(function (id) {
+            badgeGuncelle(id, adet, aktif);
+        });
+    }
+
+    // Her 30 saniyede tüm sayaçları kontrol et
     function bildirimKontrol() {
-        fetch('ajax/bildirimler_api.php?action=count')
+        fetch('ajax/bildirimler_api.php?action=all_counts')
             .then(r => r.json())
             .then(data => {
-                const badge = document.getElementById('bildirimBadge');
-                if (badge) {
-                    if (data.count > 0) {
-                        badge.style.display = 'inline';
-                        badge.innerText = data.count;
+                const bildirimCount = Number(data.bildirim_count ?? data.count ?? 0);
+                const siparisCount = Number(data.siparis_count ?? 0);
+                const onayCount = Number(data.onay_count ?? 0);
+                const canSiparisNow = Boolean(data.can_siparis);
+                const canOnayNow = Boolean(data.can_onay);
 
-                        // Yeni bildirim geldi - popup göster
-                        if (data.count > sonBildirimSayisi) {
-                            yeniBildirimPopup(data.count - sonBildirimSayisi);
-                        }
-                        sonBildirimSayisi = data.count;
-                    } else {
-                        badge.style.display = 'none';
-                        sonBildirimSayisi = 0;
-                    }
+                badgeGuncelle('bildirimBadge', bildirimCount, true);
+                badgeGuncelle('siparisBadge', siparisCount, canSiparisNow);
+                onayBadgeGuncelle(onayCount, canOnayNow);
+
+                if (bildirimCount > sonBildirimSayisi) {
+                    yeniBildirimPopup(`${bildirimCount - sonBildirimSayisi} yeni bildiriminiz var!`, 'fa-bell');
                 }
+                if (canSiparisNow && siparisCount > sonSiparisSayisi) {
+                    yeniBildirimPopup(`${siparisCount - sonSiparisSayisi} yeni bekleyen sipariş var!`, 'fa-shopping-bag');
+                }
+                if (canOnayNow && onayCount > sonOnaySayisi) {
+                    yeniBildirimPopup(`${onayCount - sonOnaySayisi} yeni onay bekleyen işlem var!`, 'fa-check-double');
+                }
+
+                sonBildirimSayisi = bildirimCount;
+                sonSiparisSayisi = canSiparisNow ? siparisCount : 0;
+                sonOnaySayisi = canOnayNow ? onayCount : 0;
             })
-            .catch(err => console.log('Bildirim kontrol hatası'));
+            .catch(() => { });
     }
 
     // Yeni bildirim popup'ı
-    function yeniBildirimPopup(adet) {
+    function yeniBildirimPopup(mesaj, ikon = 'fa-bell') {
         // Mevcut popup varsa kaldır
         const mevcut = document.getElementById('bildirimPopup');
         if (mevcut) mevcut.remove();
@@ -1103,8 +1151,8 @@ if (!function_exists('navbarModulGoster')) {
         popup.id = 'bildirimPopup';
         popup.innerHTML = `
             <div class="bildirim-popup">
-                <i class="fas fa-bell fa-bounce text-warning me-2"></i>
-                <span>${adet} yeni bildiriminiz var!</span>
+                <i class="fas ${ikon} fa-bounce text-warning me-2"></i>
+                <span>${mesaj}</span>
                 <button onclick="this.parentElement.parentElement.remove()" class="btn btn-sm btn-link text-white p-0 ms-3">
                     <i class="fas fa-times"></i>
                 </button>
