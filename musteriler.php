@@ -100,7 +100,7 @@ if ($secili_musteri_id > 0) {
                 s.siparis_tarihi, 
                 s.durum, 
                 s.aciklama,
-                s.yetkili_kisi,
+                s.alici_adi,
                 s.odeme_tarihi,
                 sd.urun_adi, 
                 sd.miktar, 
