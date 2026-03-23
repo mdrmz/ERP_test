@@ -1,0 +1,47 @@
+-- ÖZBAL UN ERP - GÜNLÜK SQL DEĞİŞİKLİKLERİ (17.03.2026) --
+
+-- 1. MÜŞTERİLER TABLOSU GÜNCELLEMESİ (CRM Entegrasyonu)
+-- Yeni sütunlar eklendi ve tablo yapısı modernize edildi.
+DROP TABLE IF EXISTS musteriler;
+CREATE TABLE musteriler (
+    id INT(11) AUTO_INCREMENT PRIMARY KEY,
+    cari_kod VARCHAR(50) NOT NULL UNIQUE,
+    cari_tip ENUM('Müşteri', 'Tedarikçi') NOT NULL,
+    firma_adi VARCHAR(255) NOT NULL,
+    yetkili_kisi VARCHAR(100),
+    telefon VARCHAR(50),
+    eposta VARCHAR(100),
+    vergi_dairesi VARCHAR(100),
+    vergi_no VARCHAR(50),
+    il VARCHAR(50),
+    ilce VARCHAR(50),
+    adres TEXT,
+    ozel_notlar TEXT,
+    bakiye DECIMAL(18,2) DEFAULT 0.00,
+    para_birimi VARCHAR(10) DEFAULT 'TL',
+    kayit_tarihi TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 2. SİPARİŞLER TABLOSU EKLEMELERİ
+-- Sevkiyat ve ödeme takibi için yeni alanlar.
+ALTER TABLE siparisler ADD COLUMN alici_adi VARCHAR(255) NULL AFTER musteri_id;
+ALTER TABLE siparisler ADD COLUMN odeme_tarihi DATE NULL AFTER teslim_tarihi;
+
+-- 3. BAKIM VE LABORATUVAR MODÜLÜ (Yeni Tablo)
+-- Laboratuvar kimyasalları ve malzemeleri takibi için.
+CREATE TABLE IF NOT EXISTS bakim_lab_malzemeler (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    malzeme_adi VARCHAR(255) NOT NULL,
+    miktar DECIMAL(10,2) DEFAULT 0.00,
+    birim VARCHAR(50),
+    kullanim_alani VARCHAR(255),
+    kritik_seviye DECIMAL(10,2) DEFAULT 0.00,
+    tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 4. ÖRNEK VERİ GİRİŞLERİ (CRM Test)
+INSERT INTO musteriler (cari_kod, cari_tip, firma_adi, yetkili_kisi, telefon, eposta, vergi_dairesi, vergi_no, il, ilce, adres, ozel_notlar) 
+VALUES ('120.01.001', 'Müşteri', 'Kardeşler Ekmek Fırını', 'Ahmet Demir', '0532 111 22 33', 'kardesler@mail.com', 'Marmara', '1234567890', 'İstanbul', 'Esenyurt', 'Fatih Mah. 12. Sokak No:5', 'Düzenli un alımı yapar, ödemeler haftalık.');
+
+INSERT INTO musteriler (cari_kod, cari_tip, firma_adi, yetkili_kisi, telefon, eposta, vergi_dairesi, vergi_no, il, ilce, adres, ozel_notlar) 
+VALUES ('320.01.005', 'Tedarikçi', 'Anadolu Tarım Ürünleri', 'Mehmet Yılmaz', '0544 333 44 55', 'anadolu@tarim.com', 'Konya V.D.', '9876543210', 'Konya', 'Meram', 'Sanayi Sitesi B Blok No:12', 'Buğday tedarikçimiz, protein oranı yüksek ürün verir.');
