@@ -100,7 +100,7 @@ if ($secili_musteri_id > 0) {
                 s.siparis_tarihi, 
                 s.durum, 
                 s.aciklama,
-                s.alici_adi,
+                s.yetkili_kisi,
                 s.odeme_tarihi,
                 sd.urun_adi, 
                 sd.miktar, 
@@ -276,100 +276,85 @@ if ($secili_musteri_id > 0) {
                                 İzlenebilirlik Raporları</h5>
                         </div>
                         <div class="card-body p-0">
+                            <?php if ($gecmis_siparisler && $gecmis_siparisler->num_rows > 0) { ?>
                             <div class="table-responsive p-3">
-                                <table class="table table-hover align-middle" id="raporTablosu">
+                                <table class="table table-hover align-middle" id="raporTablosu" style="width:100%">
                                     <thead class="table-light">
                                         <tr>
-                                            <th>Sipariş Kodu</th>
+                                            <th>Sipariş No</th>
                                             <th>Tarih</th>
-                                            <th>Detaylar (Alıcı / Onay / İstekler)</th>
-                                            <th>Ürün / Miktar</th>
+                                            <th>Müşteri/Alıcı Detayı</th>
+                                            <th>Ürün Bilgisi</th>
                                             <th>Durum</th>
-                                            <th>İzlenebilirlik Kodları</th>
+                                            <th>İzlenebilirlik</th>
                                             <th>İşlem</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php if ($gecmis_siparisler && $gecmis_siparisler->num_rows > 0) {
-                                            while ($s = $gecmis_siparisler->fetch_assoc()) {
-                                                $renk = 'secondary';
-                                                if ($s['durum'] == 'Bekliyor')
-                                                    $renk = 'warning text-dark';
-                                                if ($s['durum'] == 'KismiSevk')
-                                                    $renk = 'primary';
-                                                if ($s['durum'] == 'TeslimEdildi')
-                                                    $renk = 'success';
-                                                ?>
-                                                <tr>
-                                                    <td><strong>
-                                                            <?php echo $s['siparis_kodu']; ?>
-                                                        </strong></td>
-                                                    <td><small>
-                                                            <?php echo date("d.m.Y", strtotime($s['siparis_tarihi'])); ?>
-                                                        </small></td>
-                                                    <td>
-                                                        <?php if (!empty($s['alici_adi'])): ?>
-                                                            <div class="small fw-bold text-primary"><i class="fas fa-user-tag me-1"></i><?php echo $s['alici_adi']; ?></div>
-                                                        <?php endif; ?>
-                                                        <?php if (!empty($s['odeme_tarihi'])): ?>
-                                                            <div class="small text-danger"><i class="fas fa-calendar-check me-1"></i>Ödeme: <?php echo date("d.m.Y", strtotime($s['odeme_tarihi'])); ?></div>
-                                                        <?php endif; ?>
-                                                        <?php if (!empty($s['aciklama'])): ?>
-                                                            <div class="small text-muted mt-1 fst-italic"><i class="fas fa-comment-dots me-1"></i><?php echo htmlspecialchars($s['aciklama']); ?></div>
-                                                        <?php endif; ?>
-                                                        <?php if (empty($s['alici_adi']) && empty($s['odeme_tarihi']) && empty($s['aciklama'])): ?>
-                                                            <span class="text-muted small">-</span>
-                                                        <?php endif; ?>
-                                                    </td>
-                                                    <td>
-                                                        <div class="fw-bold"><?php echo $s['urun_adi']; ?></div>
-                                                        <div class="small text-muted"><?php echo $s['miktar'] . ' ' . $s['birim']; ?></div>
-                                                    </td>
-                                                    <td><span class="badge bg-<?php echo $renk; ?>">
-                                                            <?php echo $s['durum']; ?>
-                                                        </span></td>
-                                                    <td>
-                                                        <?php
-                                                        if ($s['parti_nolar']) {
-                                                            // Aynı siparişe ait partileri doğru ayırmak zordur eğer sevkiyatta sipariş ID tutulmamışsa.
-                                                            // Burada hastaya özel tüm gönderilen parti noları genel olarak basıyoruz (Sistemin yapısı gereği).
-                                                            $partiler = array_unique(explode(',', $s['parti_nolar']));
-                                                            foreach ($partiler as $p) {
-                                                                $p = trim($p);
-                                                                if (empty($p))
-                                                                    continue;
-                                                                echo "<span class='track-code me-1'><i class='fas fa-barcode'></i> {$p}</span>";
-                                                            }
-                                                        } else {
-                                                            echo "<span class='text-muted small'>Henüz sevk edilmedi</span>";
-                                                        }
-                                                        ?>
-                                                    </td>
-                                                    <td>
-                                                        <?php if ($s['parti_nolar']) { ?>
-                                                            <!-- İzlenebilirlik Sayfasına Yönlendir -->
-                                                            <?php
-                                                            $ilk_parti = trim(explode(',', $s['parti_nolar'])[0]);
-                                                            if (!empty($ilk_parti)) {
-                                                                ?>
-                                                                <a href="izlenebilirlik.php?sorgula=1&parti_no=<?php echo urlencode($ilk_parti); ?>"
-                                                                    class="btn btn-sm btn-success fw-bold text-white shadow-sm" target="_blank"
-                                                                    title="Hammaddeden Çıkışa İzlenebilirlik Raporunu Göster">
-                                                                    <i class="fas fa-route me-1"></i> İzlenebilirlik Raporu
-                                                                </a>
-                                                            <?php } ?>
-                                                        <?php } ?>
-                                                    </td>
-                                                </tr>
-                                                <?php
-                                            }
-                                        } else {
-                                            echo "<tr><td colspan='7' class='text-center p-4 text-muted'>Bu müşteriye ait sipariş bulunamadı.</td></tr>";
-                                        }
+                                        <?php while ($s = $gecmis_siparisler->fetch_assoc()): 
+                                            $renk = 'secondary';
+                                            if ($s['durum'] == 'Bekliyor') $renk = 'warning text-dark';
+                                            if ($s['durum'] == 'KismiSevk') $renk = 'primary';
+                                            if ($s['durum'] == 'TeslimEdildi') $renk = 'success';
                                         ?>
+                                        <tr>
+                                            <td><strong><?php echo $s['siparis_kodu']; ?></strong></td>
+                                            <td><small><?php echo date("d.m.Y", strtotime($s['siparis_tarihi'])); ?></small></td>
+                                            <td>
+                                                <?php if (!empty($s['alici_adi'])): ?>
+                                                    <div class="small fw-bold text-primary"><i class="fas fa-user-tag me-1"></i><?php echo $s['alici_adi']; ?></div>
+                                                <?php endif; ?>
+                                                <?php if (!empty($s['odeme_tarihi'])): ?>
+                                                    <div class="small text-danger"><i class="fas fa-calendar-check me-1"></i>Vade: <?php echo date("d.m.Y", strtotime($s['odeme_tarihi'])); ?></div>
+                                                <?php endif; ?>
+                                                <?php if (!empty($s['aciklama'])): ?>
+                                                    <div class="small text-muted mt-1 fst-italic"><i class="fas fa-comment-dots me-1"></i><?php echo htmlspecialchars($s['aciklama']); ?></div>
+                                                <?php endif; ?>
+                                                <?php if (empty($s['alici_adi']) && empty($s['odeme_tarihi']) && empty($s['aciklama'])): ?>
+                                                    <span class="text-muted small">-</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <div class="fw-bold"><?php echo $s['urun_adi']; ?></div>
+                                                <div class="small text-muted"><?php echo $s['miktar'] . ' ' . $s['birim']; ?></div>
+                                            </td>
+                                            <td><span class="badge bg-<?php echo $renk; ?>"><?php echo $s['durum']; ?></span></td>
+                                            <td>
+                                                <?php
+                                                if ($s['parti_nolar']) {
+                                                    $partiler = array_unique(explode(',', $s['parti_nolar']));
+                                                    foreach ($partiler as $p) {
+                                                        $p = trim($p);
+                                                        if (empty($p)) continue;
+                                                        echo "<span class='track-code me-1'><i class='fas fa-barcode'></i> {$p}</span> ";
+                                                    }
+                                                } else {
+                                                    echo "<span class='text-muted small'>Henüz sevk edilmedi</span>";
+                                                }
+                                                ?>
+                                            </td>
+                                            <td>
+                                                <?php if ($s['parti_nolar']) { ?>
+                                                    <?php $ilk_parti = trim(explode(',', $s['parti_nolar'])[0]); ?>
+                                                    <?php if (!empty($ilk_parti)) { ?>
+                                                        <a href="izlenebilirlik.php?sorgula=1&parti_no=<?php echo urlencode($ilk_parti); ?>"
+                                                            class="btn btn-sm btn-success fw-bold text-white shadow-sm" target="_blank">
+                                                            <i class="fas fa-route me-1"></i> Rapor
+                                                        </a>
+                                                    <?php } ?>
+                                                <?php } ?>
+                                            </td>
+                                        </tr>
+                                        <?php endwhile; ?>
                                     </tbody>
                                 </table>
                             </div>
+                            <?php } else { ?>
+                                <div class="p-5 text-center text-muted">
+                                    <i class="fas fa-box-open fa-3x mb-3 opacity-25"></i>
+                                    <p>Bu müşteriye ait güncel sipariş kaydı bulunamadı.</p>
+                                </div>
+                            <?php } ?>
                         </div>
                     </div>
                 <?php } else { ?>
@@ -500,13 +485,20 @@ if ($secili_musteri_id > 0) {
                 });
             <?php endif; ?>
 
-            // DataTables
-            var table = $('#raporTablosu').DataTable({
-                "language": {
-                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/tr.json"
-                },
-                "order": [[1, "desc"]]
-            });
+            // DataTables: Sadece tablo varsa başlat
+            if ($('#raporTablosu').length > 0) {
+                var table = $('#raporTablosu').DataTable({
+                    "language": {
+                        "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/tr.json"
+                    },
+                    "order": [[1, "desc"]],
+                    "columnDefs": [
+                        { "targets": [5, 6], "orderable": false } // İzlenebilirlik ve İşlem kolonlarını sıralamaya kapat
+                    ],
+                    "destroy": true, // Sayfa yenilenmeden tekrar yüklenirse hata vermemesi için
+                    "responsive": true
+                });
+            }
 
             // Müşteri Arama (Sol Menü)
             $("#musteriAra").on("keyup", function () {
