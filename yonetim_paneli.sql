@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Anamakine: 127.0.0.1
--- Üretim Zamanı: 23 Mar 2026, 11:05:52
+-- Üretim Zamanı: 24 Mar 2026, 18:34:05
 -- Sunucu sürümü: 10.4.32-MariaDB
 -- PHP Sürümü: 8.2.12
 
@@ -191,7 +191,12 @@ INSERT INTO `bildirimler` (`id`, `bildirim_tipi`, `referans_tablo`, `referans_id
 (21, 'analiz_tamamlandi', 'lab_analizleri', 6, 1, NULL, 'Lab Analizi Tamamlandi: K1-0001', 'Protein: -% | Gluten: -% | Laborant: admin', 'lab_analizleri.php', 0, 1, '2026-03-12 12:55:35', NULL),
 (22, 'arac_geldi', 'hammadde_girisleri', 7, 5, NULL, 'Yeni Araç Geldi: 27 TEST 27', 'Tedarikçi: Deneme | Hammadde: VBURGAZ | 0 kg', 'lab_analizleri.php', 0, 1, '2026-03-12 12:58:43', NULL),
 (23, 'arac_geldi', 'hammadde_girisleri', 7, 1, NULL, 'Yeni Araç Geldi: 27 TEST 27', 'Tedarikçi: Deneme | Hammadde: VBURGAZ | 0 kg', 'hammadde.php', 0, 1, '2026-03-12 12:58:43', NULL),
-(24, 'analiz_tamamlandi', 'lab_analizleri', 7, 1, NULL, 'Lab Analizi Tamamlandi: D1-0001', 'Protein: -% | Gluten: -% | Laborant: admin', 'lab_analizleri.php', 0, 1, '2026-03-12 12:58:59', NULL);
+(24, 'analiz_tamamlandi', 'lab_analizleri', 7, 1, NULL, 'Lab Analizi Tamamlandi: D1-0001', 'Protein: -% | Gluten: -% | Laborant: admin', 'lab_analizleri.php', 0, 1, '2026-03-12 12:58:59', NULL),
+(25, 'arac_geldi', 'hammadde_girisleri', 8, 5, NULL, 'Yeni Araç Geldi: AFASDF', 'Tedarikçi: asdasd | Hammadde: OVIDIO | 0 kg', 'lab_analizleri.php', 0, 1, '2026-03-23 15:14:31', NULL),
+(26, 'arac_geldi', 'hammadde_girisleri', 8, 1, NULL, 'Yeni Araç Geldi: AFASDF', 'Tedarikçi: asdasd | Hammadde: OVIDIO | 0 kg', 'hammadde.php', 0, 1, '2026-03-23 15:14:31', NULL),
+(27, 'arac_geldi', 'hammadde_girisleri', 9, 5, NULL, 'Yeni Araç Geldi: SAD', 'Tedarikçi: sda | Hammadde: ZIVEGO | 0 kg', 'lab_analizleri.php', 0, 1, '2026-03-23 15:41:24', NULL),
+(28, 'arac_geldi', 'hammadde_girisleri', 9, 1, NULL, 'Yeni Araç Geldi: SAD', 'Tedarikçi: sda | Hammadde: ZIVEGO | 0 kg', 'hammadde.php', 0, 1, '2026-03-23 15:41:24', NULL),
+(29, 'analiz_tamamlandi', 'lab_analizleri', 8, 1, NULL, 'Lab Analizi Tamamlandi: D3-0001', 'Protein: -% | Gluten: -% | Laborant: admin', 'lab_analizleri.php', 0, 1, '2026-03-23 15:41:47', NULL);
 
 -- --------------------------------------------------------
 
@@ -380,7 +385,9 @@ INSERT INTO `hammadde_girisleri` (`id`, `tarih`, `hammadde_id`, `silo_id`, `mikt
 (4, '2026-02-24 16:16:20', 14, NULL, 0.00, 0.000, NULL, NULL, 'K2-0003', '23', NULL, 'SDASD', 'admin', 0, 'bekliyor', 0.000, 0.00, NULL, 0.00, 0.00, 0.00, 0.00),
 (5, '2026-03-12 12:00:56', 10, NULL, 5000.00, 0.000, NULL, NULL, 'D10-0001', 'sadsaads', NULL, 'ASDASDSAD', 'admin', 0, 'bekliyor', 0.000, 0.00, NULL, 0.00, 0.00, 0.00, 0.00),
 (6, '2026-03-12 12:55:24', 13, NULL, 0.00, 0.000, NULL, NULL, 'K1-0001', 'testtttt', NULL, 'ASDDSA', 'admin', 0, 'bekliyor', 0.000, 0.00, NULL, 0.00, 0.00, 0.00, 0.00),
-(7, '2026-03-12 12:58:43', 1, NULL, 0.00, 0.000, NULL, NULL, 'D1-0001', 'Deneme', NULL, '27 TEST 27', 'admin', 0, 'bekliyor', 0.000, 0.00, NULL, 0.00, 0.00, 0.00, 0.00);
+(7, '2026-03-12 12:58:43', 1, NULL, 0.00, 0.000, NULL, NULL, 'D1-0001', 'Deneme', NULL, '27 TEST 27', 'admin', 0, 'bekliyor', 0.000, 0.00, NULL, 0.00, 0.00, 0.00, 0.00),
+(8, '2026-03-23 15:14:31', 3, NULL, 0.00, 0.000, NULL, NULL, 'D3-0001', 'asdasd', NULL, 'AFASDF', 'admin', 0, 'bekliyor', 0.000, 0.00, NULL, 0.00, 0.00, 0.00, 0.00),
+(9, '2026-03-23 15:41:24', 2, NULL, 0.00, 0.000, NULL, NULL, 'D2-0001', 'sda', NULL, 'SAD', 'admin', 0, 'bekliyor', 0.000, 0.00, NULL, 0.00, 0.00, 0.00, 0.00);
 
 -- --------------------------------------------------------
 
@@ -417,7 +424,9 @@ INSERT INTO `hammadde_kabul_akisi` (`id`, `hammadde_giris_id`, `asama`, `lab_ana
 (4, 4, 'tamamlandi', NULL, 'reddedildi', 1, '2026-03-12 12:55:57', NULL, NULL, 'dsasda', NULL, '2026-02-24 16:16:20', '2026-03-12 12:56:01', 200.0000, '2026-03-13'),
 (5, 5, 'tamamlandi', NULL, 'onaylandi', 1, '2026-03-12 12:02:13', 5000.00, NULL, NULL, NULL, '2026-03-12 12:00:56', '2026-03-12 12:54:01', 100.0000, '2026-03-23'),
 (6, 6, 'tamamlandi', NULL, 'satinalma_red', 1, '2026-03-12 12:56:32', NULL, NULL, 'öyle', NULL, '2026-03-12 12:55:24', '2026-03-12 12:57:46', 200.0000, '2026-03-29'),
-(7, 7, 'bekliyor', NULL, 'bekliyor', NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-12 12:58:43', '2026-03-12 12:58:43', NULL, NULL);
+(7, 7, 'tamamlandi', NULL, 'reddedildi', 1, '2026-03-23 15:45:31', NULL, NULL, '.', NULL, '2026-03-12 12:58:43', '2026-03-23 15:45:39', 0.0000, '2026-03-23'),
+(8, 8, 'tamamlandi', NULL, 'reddedildi', 1, '2026-03-23 15:45:49', NULL, NULL, '.', NULL, '2026-03-23 15:14:31', '2026-03-23 15:45:51', 2.0000, '2026-03-18'),
+(9, 9, 'bekliyor', NULL, 'bekliyor', NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-23 15:41:24', '2026-03-23 15:41:24', NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -460,7 +469,13 @@ INSERT INTO `hammadde_kabul_gecmisi` (`id`, `akis_id`, `onceki_asama`, `yeni_asa
 (18, 4, 'reddedildi', 'tamamlandi', 1, 'Reddedilen hammadde tamamlandı/arşivlendi.', '2026-03-12 12:56:01'),
 (19, 6, 'bekliyor', 'satina_bekliyor', 1, 'Onay Merkezi üzerinden onaylandi. Satınalma işlemleri bekleniyor.', '2026-03-12 12:56:32'),
 (20, 6, 'satina_bekliyor', 'tamamlandi', 1, 'Satın alma reddetti: öyle', '2026-03-12 12:57:46'),
-(21, 7, NULL, 'bekliyor', 1, 'Araç geldi, kayıt oluşturuldu', '2026-03-12 12:58:43');
+(21, 7, NULL, 'bekliyor', 1, 'Araç geldi, kayıt oluşturuldu', '2026-03-12 12:58:43'),
+(22, 8, NULL, 'bekliyor', 1, 'Araç geldi, kayıt oluşturuldu', '2026-03-23 15:14:31'),
+(23, 9, NULL, 'bekliyor', 1, 'Araç geldi, kayıt oluşturuldu', '2026-03-23 15:41:24'),
+(24, 7, 'bekliyor', 'reddedildi', 1, 'Red sebebi: .', '2026-03-23 15:45:31'),
+(25, 7, 'reddedildi', 'tamamlandi', 1, 'Reddedilen hammadde tamamlandı/arşivlendi.', '2026-03-23 15:45:39'),
+(26, 8, 'bekliyor', 'reddedildi', 1, 'Red sebebi: .', '2026-03-23 15:45:49'),
+(27, 8, 'reddedildi', 'tamamlandi', 1, 'Reddedilen hammadde tamamlandı/arşivlendi.', '2026-03-23 15:45:51');
 
 -- --------------------------------------------------------
 
@@ -552,7 +567,11 @@ INSERT INTO `islem_loglari` (`id`, `user_id`, `islem_tipi`, `islem_tablosu`, `is
 (46, 1, 'yetki_toplu_guncelleme', 'modul_yetkileri', 1, 'Rol ID: 1 için yetkiler toplu güncellendi', '', '192.168.1.149', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-02-27 11:09:02'),
 (47, 1, 'kullanici_ekleme', 'users', 2, 'Kullanıcı: test eklendi', '', '192.168.1.149', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-02-27 14:29:28'),
 (48, 1, 'yetki_toplu_guncelleme', 'modul_yetkileri', 5, 'Rol ID: 5 için yetkiler toplu güncellendi', '', '192.168.1.149', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-02-27 14:29:41'),
-(49, 1, 'kullanici_guncelleme', 'users', 2, 'Kullanıcı bilgileri güncellendi', '', '192.168.1.149', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-02 10:37:25');
+(49, 1, 'kullanici_guncelleme', 'users', 2, 'Kullanıcı bilgileri güncellendi', '', '192.168.1.149', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-02 10:37:25'),
+(50, 1, 'kullanici_ekleme', 'users', 3, 'Kullanıcı: patron1 eklendi', '', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-23 20:55:07'),
+(51, 3, 'kullanici_durum', 'users', 2, 'Durum: pasif', '', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-23 20:56:29'),
+(52, 1, 'kullanici_durum', 'users', 2, 'Durum: aktif', '', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-23 20:56:51'),
+(53, 1, 'rol_guncelleme', 'users', 3, 'Rol ID: 1 olarak güncellendi', '', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-23 20:57:02');
 
 -- --------------------------------------------------------
 
@@ -642,7 +661,10 @@ INSERT INTO `kullanici_bildirim_durumlari` (`id`, `user_id`, `bildirim_id`, `oku
 (13, 1, 20, 1, 1, '2026-03-12 09:56:12'),
 (14, 1, 21, 1, 1, '2026-03-12 09:56:12'),
 (29, 1, 23, 1, 0, '2026-03-12 10:03:01'),
-(30, 1, 24, 1, 0, '2026-03-12 10:03:01');
+(30, 1, 24, 1, 0, '2026-03-12 10:03:01'),
+(31, 1, 26, 1, 0, '2026-03-23 12:18:28'),
+(32, 1, 28, 1, 0, '2026-03-23 12:41:34'),
+(33, 1, 29, 1, 0, '2026-03-23 12:41:57');
 
 -- --------------------------------------------------------
 
@@ -724,7 +746,8 @@ INSERT INTO `lab_analizleri` (`id`, `parti_no`, `hammadde_giris_id`, `protein`, 
 (4, 'K2-0001', 3, NULL, NULL, NULL, NULL, 0, 85.00, 0.00, 0, 0.00, 0.00, 0.00, 'admin', '2026-03-12 11:59:44'),
 (5, 'D10-0001', 5, NULL, NULL, NULL, NULL, 0, 90.00, 0.00, 0, 0.00, 0.00, 0.00, 'admin', '2026-03-12 12:01:09'),
 (6, 'K1-0001', 6, NULL, NULL, NULL, NULL, 0, 100.00, 0.00, 0, 0.00, 0.00, 0.00, 'admin', '2026-03-12 12:55:35'),
-(7, 'D1-0001', 7, NULL, NULL, NULL, NULL, 0, 20.00, 0.00, 0, 0.00, 0.00, 0.00, 'admin', '2026-03-12 12:58:59');
+(7, 'D1-0001', 7, NULL, NULL, NULL, NULL, 0, 20.00, 0.00, 0, 0.00, 0.00, 0.00, 'admin', '2026-03-12 12:58:59'),
+(8, 'D3-0001', 8, NULL, NULL, NULL, NULL, 0, 85.00, 0.00, 0, 0.00, 0.00, 0.00, 'admin', '2026-03-23 15:41:47');
 
 -- --------------------------------------------------------
 
@@ -1126,6 +1149,15 @@ CREATE TABLE `sevkiyat_detaylari` (
   `notlar` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Tablo döküm verisi `sevkiyat_detaylari`
+--
+
+INSERT INTO `sevkiyat_detaylari` (`id`, `siparis_id`, `urun_adi`, `miktar`, `sevk_tarihi`, `plaka`, `notlar`) VALUES
+(1, 1, 'xxx', 10, '2026-03-23 00:00:00', '56165', NULL),
+(2, 1, 'asda', 30, '2026-03-23 00:00:00', '56165', NULL),
+(3, 2, 'deneme', 50, '2026-03-23 00:00:00', 'DENEME', NULL);
+
 -- --------------------------------------------------------
 
 --
@@ -1353,8 +1385,19 @@ CREATE TABLE `siparisler` (
   `toplam_tutar` decimal(10,2) DEFAULT 0.00,
   `aciklama` text DEFAULT NULL,
   `olusturan_user_id` int(11) DEFAULT NULL,
-  `genel_toplam` decimal(10,2) DEFAULT 0.00
+  `genel_toplam` decimal(10,2) DEFAULT 0.00,
+  `olusturma_tarihi` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Tablo döküm verisi `siparisler`
+--
+
+INSERT INTO `siparisler` (`id`, `musteri_id`, `alici_adi`, `siparis_kodu`, `siparis_tarihi`, `teslim_tarihi`, `odeme_tarihi`, `durum`, `toplam_tutar`, `aciklama`, `olusturan_user_id`, `genel_toplam`, `olusturma_tarihi`) VALUES
+(1, 1, '', 'SIP-20260323-405', '2026-03-23', '2026-03-26', '2026-03-31', 'KismiSevk', 1600.00, '', NULL, 1600.00, '2026-03-23 00:00:00'),
+(2, 1, '', 'SIP-20260323-133', '2026-03-23', '2026-03-26', '2026-03-25', 'TeslimEdildi', 25000.00, '', NULL, 25000.00, '2026-03-23 00:00:00'),
+(3, 1, '', 'SIP-20260323-170', '2026-03-23', '2026-03-26', '2026-03-26', 'IptalEdildi', 0.00, '', NULL, 0.00, '2026-03-23 00:00:00'),
+(4, 1, '', 'SIP-20260323-956', '2026-03-23', '2026-03-26', '2026-03-26', 'IptalEdildi', 0.00, '', NULL, 0.00, '2026-03-23 00:00:00');
 
 -- --------------------------------------------------------
 
@@ -1372,6 +1415,17 @@ CREATE TABLE `siparis_detaylari` (
   `toplam_fiyat` decimal(10,2) DEFAULT NULL,
   `sevk_edilen_miktar` int(11) DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Tablo döküm verisi `siparis_detaylari`
+--
+
+INSERT INTO `siparis_detaylari` (`id`, `siparis_id`, `urun_adi`, `miktar`, `birim`, `birim_fiyat`, `toplam_fiyat`, `sevk_edilen_miktar`) VALUES
+(1, 1, 'xxx', 20, 'Adet', 35.00, 700.00, 10),
+(2, 1, 'asda', 30, 'Adet', 30.00, 900.00, 30),
+(3, 2, 'deneme', 50, 'Adet', 500.00, 25000.00, 50),
+(4, 3, '651635', 10, 'Adet', NULL, NULL, 0),
+(5, 4, 'deneme', 200, 'Adet', NULL, NULL, 0);
 
 -- --------------------------------------------------------
 
@@ -1516,7 +1570,35 @@ INSERT INTO `system_logs` (`id`, `user_id`, `action_type`, `module`, `descriptio
 (80, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-12 11:06:26'),
 (81, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 08:35:17'),
 (82, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 08:36:06'),
-(83, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 09:49:37');
+(83, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 09:49:37'),
+(84, 1, 'INSERT', 'Pazarlama', 'Yeni sipariş girildi: SIP-20260323-405', '::1', '2026-03-23 10:21:30'),
+(85, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 12:03:05'),
+(86, 1, 'INSERT', 'Hammadde Kabul', 'Yeni araç girişi: AFASDF | Tedarikçi: asdasd | Hammadde: OVIDIO | 0 kg', '::1', '2026-03-23 12:14:31'),
+(87, 1, 'INSERT', 'Hammadde Kabul', 'Yeni araç girişi: SAD | Tedarikçi: sda | Hammadde: ZIVEGO | 0 kg', '::1', '2026-03-23 12:41:24'),
+(88, 1, 'INSERT', 'Lab Analizleri', 'Yeni analiz kaydi: Parti No: D3-0001 | Protein: -% | Gluten: -%', '::1', '2026-03-23 12:41:47'),
+(89, 1, 'INSERT', 'Pazarlama', 'Yeni sipariş girildi: SIP-20260323-133', '::1', '2026-03-23 12:42:36'),
+(90, 1, 'REJECT', 'Hammadde Kabul', 'Hammadde reddedildi | Akis ID: 7 | Sebep: .', '::1', '2026-03-23 12:45:31'),
+(91, 1, 'REJECT', 'Hammadde Kabul', 'Hammadde reddedildi | Akis ID: 8 | Sebep: .', '::1', '2026-03-23 12:45:49'),
+(92, 1, 'INSERT', 'Pazarlama', 'Yeni sipariş girildi: SIP-20260323-170', '::1', '2026-03-23 12:50:50'),
+(93, 1, 'INSERT', 'Pazarlama', 'Yeni sipariş girildi: SIP-20260323-956', '::1', '2026-03-23 13:21:09'),
+(94, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 17:47:24'),
+(95, 1, 'LOGOUT', 'auth', 'Kullanıcı çıkışı: admin', '::1', '2026-03-23 17:48:07'),
+(96, 2, 'LOGIN', 'auth', 'Kullanıcı girişi: test', '::1', '2026-03-23 17:48:12'),
+(97, 2, 'LOGOUT', 'auth', 'Kullanıcı çıkışı: test', '::1', '2026-03-23 17:48:17'),
+(98, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 17:48:22'),
+(99, 1, 'LOGOUT', 'auth', 'Kullanıcı çıkışı: admin', '::1', '2026-03-23 17:54:06'),
+(100, 2, 'LOGIN', 'auth', 'Kullanıcı girişi: test', '::1', '2026-03-23 17:54:13'),
+(101, 2, 'LOGOUT', 'auth', 'Kullanıcı çıkışı: test', '::1', '2026-03-23 17:54:16'),
+(102, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 17:54:23'),
+(103, 1, 'LOGOUT', 'auth', 'Kullanıcı çıkışı: admin', '::1', '2026-03-23 17:55:27'),
+(104, 3, 'LOGIN', 'auth', 'Kullanıcı girişi: patron1', '::1', '2026-03-23 17:55:31'),
+(105, 3, 'LOGOUT', 'auth', 'Kullanıcı çıkışı: patron1', '::1', '2026-03-23 17:56:32'),
+(106, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-23 17:56:46'),
+(107, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-24 09:00:30'),
+(108, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-24 10:35:34'),
+(109, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-24 11:32:01'),
+(110, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-24 12:46:33'),
+(111, 1, 'LOGIN', 'auth', 'Kullanıcı girişi: admin', '::1', '2026-03-24 17:17:26');
 
 -- --------------------------------------------------------
 
@@ -1937,7 +2019,8 @@ CREATE TABLE `users` (
 
 INSERT INTO `users` (`id`, `kadi`, `sifre`, `yetki`, `tam_ad`, `email`, `telefon`, `rol_id`, `aktif`, `olusturma_tarihi`) VALUES
 (1, 'admin', 'e10adc3949ba59abbe56e057f20f883e', 'admin', 'Sistem Yöneticisi', 'admin@ozbalun.com', '05550000000', 1, 1, '2026-02-01 11:58:29'),
-(2, 'test', '81dc9bdb52d04dc20036dbd8313ed055', 'personel', 'test', 'dsadas@gmail.com', '05550000000', 5, 1, '2026-02-27 14:29:28');
+(2, 'test', '81dc9bdb52d04dc20036dbd8313ed055', 'personel', 'test', 'dsadas@gmail.com', '05550000000', 5, 1, '2026-02-27 14:29:28'),
+(3, 'patron1', '81dc9bdb52d04dc20036dbd8313ed055', 'personel', 'Patron', 'patron@gmail.com', '05550000000', 1, 1, '2026-03-23 20:55:07');
 
 -- --------------------------------------------------------
 
@@ -2438,7 +2521,8 @@ ALTER TABLE `silo_stok_detay`
 ALTER TABLE `siparisler`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `siparis_kodu` (`siparis_kodu`),
-  ADD KEY `musteri_id` (`musteri_id`);
+  ADD KEY `musteri_id` (`musteri_id`),
+  ADD KEY `idx_siparis_durum_olusturma` (`durum`,`olusturma_tarihi`);
 
 --
 -- Tablo için indeksler `siparis_detaylari`
@@ -2678,7 +2762,7 @@ ALTER TABLE `bakim_lab_malzemeler`
 -- Tablo için AUTO_INCREMENT değeri `bildirimler`
 --
 ALTER TABLE `bildirimler`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `ccp_kayitlari`
@@ -2720,19 +2804,19 @@ ALTER TABLE `hammaddeler`
 -- Tablo için AUTO_INCREMENT değeri `hammadde_girisleri`
 --
 ALTER TABLE `hammadde_girisleri`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `hammadde_kabul_akisi`
 --
 ALTER TABLE `hammadde_kabul_akisi`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `hammadde_kabul_gecmisi`
 --
 ALTER TABLE `hammadde_kabul_gecmisi`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `helal_kayitlari`
@@ -2744,7 +2828,7 @@ ALTER TABLE `helal_kayitlari`
 -- Tablo için AUTO_INCREMENT değeri `islem_loglari`
 --
 ALTER TABLE `islem_loglari`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=50;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=54;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `is_emirleri`
@@ -2768,7 +2852,7 @@ ALTER TABLE `kkn_kayitlari`
 -- Tablo için AUTO_INCREMENT değeri `kullanici_bildirim_durumlari`
 --
 ALTER TABLE `kullanici_bildirim_durumlari`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=34;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `kullanici_modul_yetkileri`
@@ -2786,7 +2870,7 @@ ALTER TABLE `kullanici_rolleri`
 -- Tablo için AUTO_INCREMENT değeri `lab_analizleri`
 --
 ALTER TABLE `lab_analizleri`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `makineler`
@@ -2888,7 +2972,7 @@ ALTER TABLE `sevkiyatlar`
 -- Tablo için AUTO_INCREMENT değeri `sevkiyat_detaylari`
 --
 ALTER TABLE `sevkiyat_detaylari`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `sevkiyat_icerik`
@@ -2948,13 +3032,13 @@ ALTER TABLE `silo_stok_detay`
 -- Tablo için AUTO_INCREMENT değeri `siparisler`
 --
 ALTER TABLE `siparisler`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `siparis_detaylari`
 --
 ALTER TABLE `siparis_detaylari`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `spesifikasyonlar`
@@ -2972,7 +3056,7 @@ ALTER TABLE `stok_hareketleri`
 -- Tablo için AUTO_INCREMENT değeri `system_logs`
 --
 ALTER TABLE `system_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=84;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=112;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `temizlik_kayitlari`
@@ -3086,7 +3170,7 @@ ALTER TABLE `urunler`
 -- Tablo için AUTO_INCREMENT değeri `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- Tablo için AUTO_INCREMENT değeri `web_yuklemeler`

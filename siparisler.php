@@ -288,7 +288,26 @@ if (isset($_POST["siparis_iptal"])) {
 }
 
 $musteriler = $baglanti->query("SELECT * FROM musteriler ORDER BY firma_adi");
-$siparisler = $baglanti->query("SELECT s.*, m.firma_adi, m.cari_kod FROM siparisler s JOIN musteriler m ON s.musteri_id = m.id ORDER BY s.siparis_tarihi DESC");
+$siralamada_olusturma_var = false;
+$kolon_kontrol = $baglanti->query("SHOW COLUMNS FROM siparisler LIKE 'olusturma_tarihi'");
+if ($kolon_kontrol && $kolon_kontrol->num_rows > 0) {
+    $siralamada_olusturma_var = true;
+}
+$siralama_kolonu = $siralamada_olusturma_var ? "s.olusturma_tarihi" : "s.siparis_tarihi";
+
+$aktif_siparisler = $baglanti->query("SELECT s.*, m.firma_adi, m.cari_kod
+    FROM siparisler s
+    JOIN musteriler m ON s.musteri_id = m.id
+    WHERE s.durum NOT IN ('TeslimEdildi', 'IptalEdildi')
+    ORDER BY $siralama_kolonu DESC, s.id DESC");
+
+$gecmis_siparisler = $baglanti->query("SELECT s.*, m.firma_adi, m.cari_kod
+    FROM siparisler s
+    JOIN musteriler m ON s.musteri_id = m.id
+    WHERE s.durum IN ('TeslimEdildi', 'IptalEdildi')
+    ORDER BY $siralama_kolonu DESC, s.id DESC");
+$aktif_siparis_sayisi = ($aktif_siparisler && isset($aktif_siparisler->num_rows)) ? (int) $aktif_siparisler->num_rows : 0;
+$gecmis_siparis_sayisi = ($gecmis_siparisler && isset($gecmis_siparisler->num_rows)) ? (int) $gecmis_siparisler->num_rows : 0;
 $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dropdown için)
 
 ?>
@@ -300,53 +319,346 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
     <title>Satış & Sipariş Yönetimi</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
     <style>
-        .progress-bar-striped {
-            transition: width .6s ease;
+        /* ── Genel ── */
+        .progress-bar-striped { transition: width .6s ease; }
+
+        /* ── Sipariş kartları ── */
+        .siparis-kart { margin-bottom: 1.25rem; }
+        .siparis-kart .card-header {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #eef2f7;
         }
 
-        .siparis-islem-hucre {
-            min-width: 320px;
+        /* ── Filtre satırları ── */
+        .filtre-satiri {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 0.5rem;
+            align-items: center;
+            padding: 0.6rem 1rem;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            overflow-x: auto;
+        }
+        .filtre-satiri .filtre-grup {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            flex: 0 0 auto;
+        }
+        .filtre-satiri .filtre-grup label {
+            white-space: nowrap;
+            font-size: 0.8rem;
+            color: #6c757d;
+            margin: 0;
+        }
+        .filtre-satiri .filtre-grup select,
+        .filtre-satiri .filtre-grup input {
+            min-width: 180px;
         }
 
+        /* ── DataTables gizle/göster ── */
+        #aktifSiparisTablo_wrapper .dataTables_paginate,
+        #aktifSiparisTablo_wrapper .dataTables_length,
+        #aktifSiparisTablo_wrapper .dataTables_info { display: none !important; }
+
+        /* ── Sıralama okları ── */
+        #aktifSiparisTablo thead th,
+        #gecmisSiparisTablo thead th {
+            position: relative;
+            padding-left: 1.35rem !important;
+        }
+        #aktifSiparisTablo_wrapper table.dataTable thead .sorting:before,
+        #aktifSiparisTablo_wrapper table.dataTable thead .sorting_asc:before,
+        #aktifSiparisTablo_wrapper table.dataTable thead .sorting_desc:before,
+        #aktifSiparisTablo_wrapper table.dataTable thead .sorting:after,
+        #aktifSiparisTablo_wrapper table.dataTable thead .sorting_asc:after,
+        #aktifSiparisTablo_wrapper table.dataTable thead .sorting_desc:after,
+        #gecmisSiparisTablo_wrapper table.dataTable thead .sorting:before,
+        #gecmisSiparisTablo_wrapper table.dataTable thead .sorting_asc:before,
+        #gecmisSiparisTablo_wrapper table.dataTable thead .sorting_desc:before,
+        #gecmisSiparisTablo_wrapper table.dataTable thead .sorting:after,
+        #gecmisSiparisTablo_wrapper table.dataTable thead .sorting_asc:after,
+        #gecmisSiparisTablo_wrapper table.dataTable thead .sorting_desc:after {
+            left: 0.35rem !important;
+            right: auto !important;
+        }
+
+        /* ── İşlem butonları hücresi ── */
         .siparis-islem-listesi {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
             gap: 0.25rem;
         }
+        .siparis-islem-listesi .btn { white-space: nowrap; }
+        .siparis-islem-listesi form { margin: 0; display: inline-flex; }
 
-        .siparis-islem-listesi .btn {
-            white-space: nowrap;
-        }
-
-        .siparis-islem-listesi form {
-            margin: 0;
-            display: inline-flex;
-        }
-
-        .siparis-islem-uyari {
-            flex: 0 0 100%;
-            font-size: 0.78rem;
-            line-height: 1.2;
-            margin-top: 2px;
-        }
-
-        @media (max-width: 992px) {
-            .siparis-islem-hucre {
-                min-width: 260px;
-            }
-        }
-
-        @media (max-width: 576px) {
-            .siparis-islem-hucre {
-                min-width: 240px;
-            }
-
+        /* ── Responsive tablo kırılma noktaları ── */
+        @media (max-width: 1199px) {
             .siparis-islem-listesi .btn {
                 font-size: 0.78rem;
-                padding: 0.2rem 0.45rem;
+                padding: 0.22rem 0.45rem;
+            }
+        }
+        @media (max-width: 991px) {
+            /* İşlem kolonunu daha dar tut; DataTables responsive geri kalanları sarar */
+            .filtre-satiri .filtre-grup select,
+            .filtre-satiri .filtre-grup input { min-width: 160px; }
+        }
+        @media (max-width: 575px) {
+            .siparis-islem-listesi .btn {
+                font-size: 0.72rem;
+                padding: 0.18rem 0.4rem;
+            }
+            .filtre-satiri .filtre-grup select,
+            .filtre-satiri .filtre-grup input { min-width: 140px; }
+            .siparis-kart .card-header { flex-direction: column; align-items: flex-start !important; }
+        }
+
+        /* UI refresh inspired by satin_alma.php */
+        :root {
+            --primary-bg: #0f172a;
+            --secondary-bg: #1e293b;
+            --surface: #ffffff;
+            --accent: #f59e0b;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --line-soft: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #f1f5f9 !important;
+            color: var(--text-main);
+        }
+
+        .page-wrap {
+            max-width: 1680px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            background: linear-gradient(135deg, var(--primary-bg) 0%, var(--secondary-bg) 100%);
+            color: #fff;
+            border-radius: 1.25rem;
+            margin-top: 1.25rem;
+            margin-bottom: 1.4rem;
+            padding: 1.55rem 1.7rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 16px 28px -14px rgba(15, 23, 42, 0.55);
+        }
+
+        .page-header::before {
+            content: "";
+            position: absolute;
+            top: -65%;
+            right: -10%;
+            width: 440px;
+            height: 440px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0) 72%);
+            pointer-events: none;
+        }
+
+        .page-header .header-title {
+            font-weight: 700;
+            margin: 0 0 0.35rem 0;
+        }
+
+        .page-header .header-subtitle {
+            color: rgba(255, 255, 255, 0.78);
+            margin: 0;
+            font-size: 0.92rem;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 0.65rem;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            min-width: 142px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 0.9rem;
+            padding: 0.65rem 0.85rem;
+            text-align: center;
+            backdrop-filter: blur(8px);
+        }
+
+        .stat-card .stat-label {
+            color: rgba(255, 255, 255, 0.72);
+            font-size: 0.67rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 0.2rem;
+        }
+
+        .stat-card .stat-value {
+            color: #fff;
+            font-size: 1.38rem;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.55rem;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            margin-top: 0.95rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header-actions .btn {
+            border-radius: 999px;
+            padding: 0.44rem 1rem;
+            font-weight: 600;
+            box-shadow: 0 8px 16px -10px rgba(15, 23, 42, 0.8);
+        }
+
+        .siparis-kart {
+            border-radius: 1.1rem !important;
+            border: none !important;
+            box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06), 0 12px 26px -18px rgba(15, 23, 42, 0.28) !important;
+            overflow: hidden;
+        }
+
+        .siparis-kart .card-header {
+            background: var(--surface) !important;
+            border-bottom: 1px solid var(--line-soft);
+            padding: 0.95rem 1.15rem;
+        }
+
+        .siparis-kart .card-header h5 {
+            color: #0f172a;
+            font-weight: 700;
+        }
+
+        .filtre-satiri {
+            gap: 0.65rem;
+            padding: 0.62rem 1.1rem;
+            background: #f8fafc;
+            border-bottom: 1px solid var(--line-soft);
+            overflow-x: auto;
+            flex-wrap: nowrap;
+        }
+
+        .filtre-satiri .filtre-grup label {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .filtre-satiri .filtre-grup select,
+        .filtre-satiri .filtre-grup input {
+            border-radius: 0.6rem;
+            border-color: #cbd5e1;
+            min-width: 190px;
+        }
+
+        .filtre-satiri::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .filtre-satiri::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 999px;
+        }
+
+        .siparis-kart .table thead th {
+            background: #f8fafc !important;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.045em;
+            border-bottom: 1px solid var(--line-soft);
+            padding-top: 1.05rem;
+            padding-bottom: 1.05rem;
+            vertical-align: middle;
+        }
+
+        .siparis-kart .table tbody td {
+            border-color: #edf2f7;
+            padding-top: 0.95rem;
+            padding-bottom: 0.95rem;
+            vertical-align: middle;
+        }
+
+        .siparis-kart .table-hover tbody tr:hover {
+            background: #f8fafc;
+        }
+
+        .siparis-islem-listesi {
+            gap: 0.3rem;
+        }
+
+        .siparis-islem-listesi .btn {
+            border-radius: 0.55rem;
+            font-weight: 500;
+        }
+
+        #gecmisSiparisTablo_wrapper .dataTables_info {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin: 0;
+            padding: 0;
+        }
+
+        #gecmisSiparisTablo_wrapper .pagination {
+            margin: 0;
+            gap: 0.3rem;
+        }
+
+        #gecmisSiparisTablo_wrapper .page-link {
+            border-radius: 0.55rem !important;
+            border-color: #d1d5db;
+            color: #334155;
+            min-width: 2rem;
+            text-align: center;
+        }
+
+        #gecmisSiparisTablo_wrapper .page-item.active .page-link {
+            background-color: #0f172a;
+            border-color: #0f172a;
+            color: #fff;
+        }
+
+        @media (max-width: 991px) {
+            .page-header {
+                padding: 1.3rem 1.1rem;
+            }
+
+            .header-stats {
+                justify-content: flex-start;
+                margin-top: 0.95rem;
+            }
+
+            .header-actions {
+                justify-content: flex-start;
+            }
+
+            .filtre-satiri .filtre-grup select,
+            .filtre-satiri .filtre-grup input {
+                min-width: 165px;
+            }
+        }
+
+        @media (max-width: 575px) {
+            .filtre-satiri .filtre-grup select,
+            .filtre-satiri .filtre-grup input {
+                min-width: 145px;
             }
         }
     </style>
@@ -355,9 +667,9 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
 <body class="bg-light">
     <?php include("navbar.php"); ?>
 
-    <div class="container py-4">
+    <div class="container-fluid px-md-4 pb-4 page-wrap">
 
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4 d-none legacy-page-head">
             <h2><i class="fas fa-shopping-bag text-primary"></i> Satış & Sipariş Yönetimi</h2>
             <div class="d-flex flex-wrap gap-2">
                 <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#yeniMusteriModal">
@@ -372,26 +684,70 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
 
 
         <!-- SİPARİŞ LİSTESİ -->
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white">
-                <h5 class="mb-0">Sipariş Listesi</h5>
+        <div class="page-header">
+            <div class="row align-items-center g-3">
+                <div class="col-lg-6">
+                    <h2 class="header-title"><i class="fas fa-shopping-bag me-2"></i>Satış & Sipariş Yönetimi</h2>
+                    <p class="header-subtitle">Siparişleri tek ekrandan fiyatlandırın, sevk edin ve geçmiş kayıtları izleyin.</p>
+                </div>
+                <div class="col-lg-6">
+                    <div class="header-stats">
+                        <div class="stat-card">
+                            <div class="stat-label">Aktif Sipariş</div>
+                            <div class="stat-value"><?php echo $aktif_siparis_sayisi; ?></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Geçmiş Sipariş</div>
+                            <div class="stat-value"><?php echo $gecmis_siparis_sayisi; ?></div>
+                        </div>
+                    </div>
+                    <div class="header-actions">
+                        <button class="btn btn-outline-light" data-bs-toggle="modal" data-bs-target="#yeniMusteriModal">
+                            <i class="fas fa-user-plus me-1"></i> Müşteri Ekle
+                        </button>
+                        <button class="btn btn-warning text-dark" data-bs-toggle="modal" data-bs-target="#yeniSiparisModal">
+                            <i class="fas fa-plus-circle me-1"></i> Sipariş Oluştur
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm siparis-kart">
+            <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h5 class="mb-0"><i class="fas fa-bolt text-warning me-1"></i> Aktif Siparişler</h5>
+            </div>
+            <div class="filtre-satiri">
+                <div class="filtre-grup">
+                    <label for="aktifDurumFiltre">Durum</label>
+                    <select id="aktifDurumFiltre" class="form-select form-select-sm">
+                        <option value="">Tüm durumlar</option>
+                        <option value="Bekliyor">Bekliyor</option>
+                        <option value="Hazirlaniyor">Hazırlanıyor</option>
+                        <option value="KismiSevk">Kısmi Sevk</option>
+                    </select>
+                </div>
+                <div class="filtre-grup">
+                    <label for="aktifSearchInput">Ara:</label>
+                    <input type="text" id="aktifSearchInput" class="form-control form-control-sm" placeholder="Müşteri, sipariş no...">
+                </div>
             </div>
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table id="aktifSiparisTablo" class="table table-hover align-middle w-100">
                     <thead class="table-light">
                         <tr>
-                            <th>Cari Kod</th>
-                            <th>Müşteri</th>
-                            <th>Sipariş Tarihi</th>
-                            <th>Durum</th>
-                            <th>İlerleme</th>
-                            <th>İşlem</th>
+                            <th class="dt-head-left" data-priority="4">Cari Kod</th>
+                            <th class="dt-head-left" data-priority="1">Müşteri</th>
+                            <th class="dt-head-left" data-priority="3">Sipariş Tarihi</th>
+                            <th class="dt-head-left" data-priority="2">Durum</th>
+                            <th class="dt-head-left" data-priority="5">İlerleme</th>
+                            <th class="dt-head-left" data-priority="6">İşlem</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php
-                        if ($siparisler->num_rows > 0) {
-                            while ($s = $siparisler->fetch_assoc()) {
+                        if ($aktif_siparisler && $aktif_siparisler->num_rows > 0) {
+                            while ($s = $aktif_siparisler->fetch_assoc()) {
                                 // İlerleme Hesabı
                                 $detaylar = $baglanti->query("
                                     SELECT 
@@ -431,8 +787,12 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                             <?php endif; ?>
                                         </div>
                                     </td>
-                                    <td>
-                                        <?php echo date("d.m.Y", strtotime($s['siparis_tarihi'])); ?>
+                                    <?php
+                                    $liste_tarihi_raw = !empty($s['olusturma_tarihi']) ? $s['olusturma_tarihi'] : (($s['siparis_tarihi'] ?? '') . ' 00:00:00');
+                                    $liste_tarihi_ts = strtotime($liste_tarihi_raw);
+                                    ?>
+                                    <td data-order="<?php echo $liste_tarihi_ts ? $liste_tarihi_ts : 0; ?>">
+                                        <?php echo $liste_tarihi_ts ? date("d.m.Y H:i", $liste_tarihi_ts) : "-"; ?>
                                     </td>
                                     <td><span class="badge bg-<?php echo $renk; ?>">
                                             <?php echo $s['durum']; ?>
@@ -488,6 +848,79 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                             <?php }
                         } else {
                             echo "<tr><td colspan='6' class='text-center p-3'>Kayıt yok.</td></tr>";
+                        } ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm siparis-kart">
+            <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h5 class="mb-0"><i class="fas fa-history text-secondary me-1"></i> Geçmiş Siparişler</h5>
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <span class="small text-muted">Sayfada</span>
+                    <select id="gecmisPageLength" class="form-select form-select-sm" style="width:auto;">
+                        <option value="10" selected>10</option>
+                        <option value="15">15</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="-1">Tümü</option>
+                    </select>
+                    <span class="small text-muted">kayıt göster</span>
+                </div>
+            </div>
+            <div class="filtre-satiri">
+                <div class="filtre-grup">
+                    <label for="gecmisDurumFiltre">Durum</label>
+                    <select id="gecmisDurumFiltre" class="form-select form-select-sm">
+                        <option value="">Tüm durumlar</option>
+                        <option value="TeslimEdildi">Teslim Edildi</option>
+                        <option value="IptalEdildi">İptal Edildi</option>
+                    </select>
+                </div>
+                <div class="filtre-grup">
+                    <label for="gecmisSearchInput">Ara:</label>
+                    <input type="text" id="gecmisSearchInput" class="form-control form-control-sm" placeholder="Müşteri, sipariş no...">
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table id="gecmisSiparisTablo" class="table table-hover align-middle mb-0 w-100">
+                    <thead class="table-light">
+                        <tr>
+                            <th data-priority="4">Cari Kod</th>
+                            <th data-priority="1">Müşteri</th>
+                            <th data-priority="3">Sipariş Tarihi</th>
+                            <th data-priority="2">Durum</th>
+                            <th data-priority="6">İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        if ($gecmis_siparisler && $gecmis_siparisler->num_rows > 0) {
+                            while ($s = $gecmis_siparisler->fetch_assoc()) {
+                                $renk = ($s['durum'] == 'TeslimEdildi') ? 'success' : 'danger';
+                                $liste_tarihi_raw = !empty($s['olusturma_tarihi']) ? $s['olusturma_tarihi'] : (($s['siparis_tarihi'] ?? '') . ' 00:00:00');
+                                $liste_tarihi_ts = strtotime($liste_tarihi_raw);
+                                ?>
+                                <tr>
+                                    <td><small class="fw-bold"><?php echo $s['cari_kod']; ?></small></td>
+                                    <td>
+                                        <div class="fw-bold"><?php echo $s['firma_adi']; ?></div>
+                                        <div class="small text-muted"><?php echo $s['siparis_kodu']; ?></div>
+                                    </td>
+                                    <td data-order="<?php echo $liste_tarihi_ts ? $liste_tarihi_ts : 0; ?>">
+                                        <?php echo $liste_tarihi_ts ? date("d.m.Y H:i", $liste_tarihi_ts) : "-"; ?>
+                                    </td>
+                                    <td><span class="badge bg-<?php echo $renk; ?>"><?php echo $s['durum']; ?></span></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-info text-white" onclick="detayAc(<?php echo $s['id']; ?>)">
+                                            <i class="fas fa-eye"></i> Detay
+                                        </button>
+                                    </td>
+                                </tr>
+                            <?php }
+                        } else {
+                            echo "<tr><td colspan='5' class='text-center p-3'>Kayıt yok.</td></tr>";
                         } ?>
                     </tbody>
                 </table>
@@ -707,7 +1140,12 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
         </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
+    <script src="https://cdn.datatables.net/responsive/2.5.0/js/responsive.bootstrap5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.all.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
@@ -737,6 +1175,77 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                     confirmButtonColor: '#0f172a'
                 });
             <?php endif; ?>
+
+            if (window.jQuery && $.fn.DataTable) {
+                const ortakDil = { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/tr.json" };
+
+                const aktifTablo = $('#aktifSiparisTablo').DataTable({
+                    language: ortakDil,
+                    order: [[2, 'desc']],
+                    paging: false,
+                    lengthChange: false,
+                    info: false,
+                    dom: 't',
+                    autoWidth: false,
+                    responsive: {
+                        details: {
+                            type: 'inline',
+                            target: 'tr'
+                        }
+                    },
+                    columnDefs: [
+                        { targets: [5], orderable: false, responsivePriority: 6 },
+                        { targets: [0], responsivePriority: 4 },
+                        { targets: [1], responsivePriority: 1 },
+                        { targets: [2], responsivePriority: 3 },
+                        { targets: [3], responsivePriority: 2 },
+                        { targets: [4], responsivePriority: 5 }
+                    ]
+                });
+
+                $('#aktifSearchInput').on('input', function () {
+                    aktifTablo.search(this.value).draw();
+                });
+
+                $('#aktifDurumFiltre').on('change', function () {
+                    const val = this.value;
+                    aktifTablo.column(3).search(val ? '^' + val + '$' : '', true, false).draw();
+                });
+
+                const gecmisTablo = $('#gecmisSiparisTablo').DataTable({
+                    language: ortakDil,
+                    order: [[2, 'desc']],
+                    pageLength: 10,
+                    dom: 't<"d-flex justify-content-between align-items-center flex-wrap gap-2 px-2 py-2 border-top"ip>',
+                    autoWidth: false,
+                    responsive: {
+                        details: {
+                            type: 'inline',
+                            target: 'tr'
+                        }
+                    },
+                    columnDefs: [
+                        { targets: [4], orderable: false, responsivePriority: 6 },
+                        { targets: [0], responsivePriority: 4 },
+                        { targets: [1], responsivePriority: 1 },
+                        { targets: [2], responsivePriority: 3 },
+                        { targets: [3], responsivePriority: 2 }
+                    ]
+                });
+
+                $('#gecmisDurumFiltre').on('change', function () {
+                    const val = this.value;
+                    gecmisTablo.column(3).search(val ? '^' + val + '$' : '', true, false).draw();
+                });
+
+                $('#gecmisSearchInput').on('input', function () {
+                    gecmisTablo.search(this.value).draw();
+                });
+
+                $('#gecmisPageLength').on('change', function () {
+                    gecmisTablo.page.len(parseInt(this.value)).draw();
+                });
+            }
         });
 
         function satirEkle() {
