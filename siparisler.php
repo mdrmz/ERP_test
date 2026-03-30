@@ -846,8 +846,6 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                     </td>
                                 </tr>
                             <?php }
-                        } else {
-                            echo "<tr><td colspan='6' class='text-center p-3'>Kayıt yok.</td></tr>";
                         } ?>
                     </tbody>
                 </table>
@@ -919,8 +917,6 @@ $urunler_list = $baglanti->query("SELECT * FROM urunler"); // Ürün listesi (dr
                                     </td>
                                 </tr>
                             <?php }
-                        } else {
-                            echo "<tr><td colspan='5' class='text-center p-3'>Kayıt yok.</td></tr>";
                         } ?>
                     </tbody>
                 </table>
