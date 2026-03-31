@@ -1,0 +1,20 @@
+[Unit]
+Description=ERP Kantar Poller Worker
+After=network-online.target mariadb.service mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/html/ERP_test
+ExecStart=/usr/bin/php /var/www/html/ERP_test/workers/kantar_poller.php --interval=20
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=20
+Environment=TZ=Europe/Istanbul
+
+[Install]
+WantedBy=multi-user.target
+
