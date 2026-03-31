@@ -10,23 +10,70 @@ sayfaErisimKontrol($baglanti);
 
 $mesaj = "";
 $hata = "";
+$force_tab = '';
+
+$pacal_tarih_degeri = trim($_POST["pacal_tarih"] ?? date('Y-m-d'));
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $pacal_tarih_degeri)) {
+    $pacal_tarih_degeri = date('Y-m-d');
+}
+$pacal_urun_degeri = trim($_POST["urun_adi"] ?? '');
+$pacal_notlar_degeri = trim($_POST["pacal_notlar"] ?? '');
+
+function sonrakiPacalPartiNo(mysqli $baglanti, string $tarihYmd): string {
+    if (!preg_match('/^\d{8}$/', $tarihYmd)) {
+        $tarihYmd = date('Ymd');
+    }
+
+    $prefix = "PCL-" . $tarihYmd . "-";
+    $prefixEsc = $baglanti->real_escape_string($prefix);
+    $res = $baglanti->query("SELECT MAX(CAST(SUBSTRING_INDEX(parti_no, '-', -1) AS UNSIGNED)) AS max_sira FROM uretim_pacal WHERE parti_no LIKE '{$prefixEsc}%'");
+    $maxSira = 0;
+    if ($res && $row = $res->fetch_assoc()) {
+        $maxSira = (int)($row['max_sira'] ?? 0);
+    }
+
+    return $prefix . str_pad((string)($maxSira + 1), 2, '0', STR_PAD_LEFT);
+}
 
 // ==================== BACKEND İŞLEMLERİ ====================
 
 // --- PAÇAL KAYDET ---
 if (isset($_POST["pacal_kaydet"])) {
-    $tarih = $baglanti->real_escape_string($_POST["pacal_tarih"]);
-    $urun_adi = $baglanti->real_escape_string(trim($_POST["urun_adi"]));
-    $parti_no = $baglanti->real_escape_string(trim($_POST["pacal_parti_no"]));
-    $notlar = $baglanti->real_escape_string(trim($_POST["pacal_notlar"] ?? ''));
+    $force_tab = 'pacal';
 
-    if (empty($tarih) || empty($urun_adi) || empty($parti_no)) {
+    $tarih_raw = trim($_POST["pacal_tarih"] ?? '');
+    $urun_adi_raw = trim($_POST["urun_adi"] ?? '');
+    $parti_no_raw = trim($_POST["pacal_parti_no"] ?? '');
+    $notlar_raw = trim($_POST["pacal_notlar"] ?? '');
+
+    $pacal_tarih_degeri = $tarih_raw;
+    $pacal_urun_degeri = $urun_adi_raw;
+    $pacal_notlar_degeri = $notlar_raw;
+
+    $tarih = $baglanti->real_escape_string($tarih_raw);
+    $urun_adi = $baglanti->real_escape_string($urun_adi_raw);
+    $parti_no = $baglanti->real_escape_string($parti_no_raw);
+    $notlar = $baglanti->real_escape_string($notlar_raw);
+
+    if (empty($tarih_raw) || empty($urun_adi_raw) || empty($parti_no_raw)) {
         $hata = "Tarih, ürün adı ve parti numarası zorunludur.";
+    }
+
+    if (empty($hata) && !preg_match('/^PCL-\d{8}-\d{2,}$/', $parti_no_raw)) {
+        $hata = "Parti numarası formatı geçersiz. Beklenen format: PCL-YYYYMMDD-01";
+    }
+
+    if (empty($hata)) {
+        $tarih_parca = substr($parti_no_raw, 4, 8);
+        $dt = DateTime::createFromFormat('Ymd', $tarih_parca);
+        if (!$dt || $dt->format('Ymd') !== $tarih_parca) {
+            $hata = "Parti numarasındaki tarih geçersiz. Beklenen format: PCL-YYYYMMDD-01";
+        }
     }
 
     if (empty($hata)) {
         $dup = $baglanti->query("SELECT id FROM uretim_pacal WHERE parti_no = '$parti_no'");
-        if ($dup && $dup->num_rows > 0) $hata = "Bu parti numarası zaten kullanılmış: $parti_no";
+        if ($dup && $dup->num_rows > 0) $hata = "Bu parti numarası zaten kullanılmış: $parti_no_raw";
     }
 
     if (empty($hata)) {
@@ -85,13 +132,13 @@ if (isset($_POST["pacal_kaydet"])) {
                             " . implode(',', $vals) . ")";
                 $baglanti->query($sql_d);
             }
-            $mesaj = "Paçal kaydı başarılı! Parti No: $parti_no";
+            header("Location: planlama.php?tab=pacal&msg=pacal_kaydedildi&parti_no=" . urlencode($parti_no_raw));
+            exit;
         } else {
             $hata = "SQL Hatası: " . $baglanti->error;
         }
     }
 }
-
 // --- PAÇAL SİL ---
 if (isset($_GET["sil_pacal"])) {
     $sil_id = (int)$_GET["sil_pacal"];
@@ -180,8 +227,11 @@ if (isset($_POST["is_emri_ver"])) {
 // Success msg from redirect
 if (isset($_GET['msg'])) {
     if ($_GET['msg'] == 'pacal_silindi') $mesaj = "Paçal kaydı silindi.";
+    if ($_GET['msg'] == 'pacal_kaydedildi') {
+        $kaydedilen_parti_no = trim($_GET['parti_no'] ?? '');
+        $mesaj = "Paçal kaydı başarılı! Parti No: " . ($kaydedilen_parti_no ?: '-');
+    }
 }
-
 // ==================== VERİ ÇEKİMLERİ ====================
 $receteler = $baglanti->query("SELECT * FROM receteler ORDER BY id DESC");
 $bugday_silolari = $baglanti->query("SELECT * FROM silolar WHERE tip='bugday' AND durum='aktif' ORDER BY silo_adi");
@@ -197,7 +247,14 @@ $aktif_emirler = $baglanti->query("
     LEFT JOIN silolar s ON isk.silo_id = s.id GROUP BY ie.id ORDER BY ie.id DESC
 ");
 
-$aktif_tab = $_GET['tab'] ?? 'haftalik';
+$pacal_tarih_ymd = str_replace('-', '', $pacal_tarih_degeri);
+$pacal_onerilen_parti_no = sonrakiPacalPartiNo($baglanti, $pacal_tarih_ymd);
+$pacal_parti_no_degeri = trim($_POST["pacal_parti_no"] ?? '');
+if ($pacal_parti_no_degeri === '') {
+    $pacal_parti_no_degeri = $pacal_onerilen_parti_no;
+}
+
+$aktif_tab = $force_tab ?: ($_GET['tab'] ?? 'haftalik');
 ?>
 <!DOCTYPE html>
 <html lang="tr">
@@ -396,6 +453,14 @@ $aktif_tab = $_GET['tab'] ?? 'haftalik';
     // Paçal form validasyonu
     const pf = document.getElementById('pacalForm');
     if(pf) pf.addEventListener('submit', function(e) {
+        const partiNoEl = document.getElementById('pacalPartiNo');
+        const partiNo = (partiNoEl?.value || '').trim();
+        if (!/^PCL-\d{8}-\d{2,}$/.test(partiNo)) {
+            e.preventDefault();
+            Swal.fire({icon:'error',title:'Hata!',text:'Parti no formatı geçersiz. Beklenen: PCL-YYYYMMDD-01',confirmButtonColor:'#0f172a'});
+            return;
+        }
+
         let topO=0;
         for(let r=1;r<=7;r++) topO += parseFloat(document.querySelector(`.oran-field[data-row="${r}"]`)?.value)||0;
         if(topO>0 && Math.abs(topO-100)>0.05){

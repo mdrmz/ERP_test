@@ -67,6 +67,24 @@ if (!function_exists('normalizeKodList')) {
     }
 }
 
+if (!function_exists('silolariDogalSirala')) {
+    function silolariDogalSirala($sonuc)
+    {
+        $satirlar = [];
+        if ($sonuc instanceof mysqli_result) {
+            while ($satir = $sonuc->fetch_assoc()) {
+                $satirlar[] = $satir;
+            }
+        }
+
+        usort($satirlar, static function ($a, $b) {
+            return strnatcasecmp((string) ($a['silo_adi'] ?? ''), (string) ($b['silo_adi'] ?? ''));
+        });
+
+        return $satirlar;
+    }
+}
+
 // --- ANA İŞLEMLER ---
 
 $mesaj = "";
@@ -204,10 +222,10 @@ if (isset($_POST['silo_sifirla'])) {
 }
 
 // SİLO VERİLERİNİ ÇEKME
-$silolar_bugday = $baglanti->query("SELECT * FROM silolar WHERE tip='bugday' ORDER BY silo_adi");
-$silolar_un = $baglanti->query("SELECT * FROM silolar WHERE tip='un' ORDER BY silo_adi");
-$silolar_tav = $baglanti->query("SELECT * FROM silolar WHERE tip='tav' ORDER BY silo_adi");
-$silolar_kepek = $baglanti->query("SELECT * FROM silolar WHERE tip='kepek' ORDER BY silo_adi");
+$silolar_bugday = silolariDogalSirala($baglanti->query("SELECT * FROM silolar WHERE tip='bugday'"));
+$silolar_un = silolariDogalSirala($baglanti->query("SELECT * FROM silolar WHERE tip='un'"));
+$silolar_tav = silolariDogalSirala($baglanti->query("SELECT * FROM silolar WHERE tip='tav'"));
+$silolar_kepek = silolariDogalSirala($baglanti->query("SELECT * FROM silolar WHERE tip='kepek'"));
 
 // HAMMADDELER
 $hammadde_listesi = [];
@@ -439,8 +457,8 @@ if ($karisim_result) {
                 $activeClass = $val['active'] ? 'show active' : '';
                 echo "<div class='tab-pane fade $activeClass' id='{$val['id']}'><div class='row'>";
 
-                if ($val['data'] && $val['data']->num_rows > 0) {
-                    while ($row = $val['data']->fetch_assoc()) {
+                if (!empty($val['data'])) {
+                    foreach ($val['data'] as $row) {
                         // Veri temizliği (null check)
                         $cap_m3 = (float) ($row['kapasite_m3'] ?? 0);
                         $dol_m3 = (float) ($row['doluluk_m3'] ?? 0);

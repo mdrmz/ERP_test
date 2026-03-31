@@ -33,16 +33,36 @@ $son_pacallar = $baglanti->query("
 ?>
 
 <!-- PAÇAL HAZIRLAMA FORMU -->
+<style>
+    .pacal-header .form-select {
+        background: rgba(255, 255, 255, .15) !important;
+        border-color: rgba(255, 255, 255, .3) !important;
+        color: #fff !important;
+    }
+
+    .pacal-header .form-select:focus {
+        background: rgba(255, 255, 255, .25) !important;
+        border-color: rgba(255, 255, 255, .6) !important;
+        color: #fff !important;
+        box-shadow: 0 0 0 .2rem rgba(255, 255, 255, .15) !important;
+    }
+
+    .pacal-header .form-select option {
+        background: #fff;
+        color: #1f2937;
+    }
+</style>
+
 <form method="post" id="pacalForm">
 
     <!-- BAŞLIK -->
-    <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 20px; border-radius: 12px; margin-bottom: 15px; color: #fff;">
+    <div class="pacal-header" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 20px; border-radius: 12px; margin-bottom: 15px; color: #fff;">
         <div class="row align-items-end g-2 g-md-3">
             <div class="col-6 col-md-2">
                 <label class="form-label" style="color:rgba(255,255,255,.85);font-size:.85rem">
                     <i class="fas fa-calendar-day me-1"></i> Tarih
                 </label>
-                <input type="date" name="pacal_tarih" class="form-control" value="<?php echo date('Y-m-d'); ?>" required
+                <input type="date" name="pacal_tarih" class="form-control" value="<?php echo htmlspecialchars($pacal_tarih_degeri ?? date('Y-m-d')); ?>" required
                     style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff">
             </div>
             <div class="col-6 col-md-2">
@@ -53,7 +73,9 @@ $son_pacallar = $baglanti->query("
                     style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff">
                     <option value="">-- Seçin --</option>
                     <?php foreach ($urun_tipleri as $ut): ?>
-                        <option value="<?php echo $ut; ?>"><?php echo $ut; ?></option>
+                        <option value="<?php echo $ut; ?>" <?php echo (($pacal_urun_degeri ?? '') === $ut) ? 'selected' : ''; ?>>
+                            <?php echo $ut; ?>
+                        </option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -62,7 +84,12 @@ $son_pacallar = $baglanti->query("
                     <i class="fas fa-barcode me-1"></i> Paçal Parti No
                 </label>
                 <input type="text" name="pacal_parti_no" id="pacalPartiNo" class="form-control" 
-                    placeholder="Örn: PCL-<?php echo date('Ymd-Hi'); ?>" required
+                    value="<?php echo htmlspecialchars($pacal_parti_no_degeri ?? '', ENT_QUOTES); ?>"
+                    placeholder="Örn: PCL-20260331-01"
+                    pattern="^PCL-\d{8}-\d{2,}$"
+                    title="Format: PCL-YYYYMMDD-01"
+                    autocomplete="off"
+                    required
                     style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff">
             </div>
             <div class="col-12 col-md-3">
@@ -70,6 +97,7 @@ $son_pacallar = $baglanti->query("
                     <i class="fas fa-sticky-note me-1"></i> Notlar
                 </label>
                 <input type="text" name="pacal_notlar" class="form-control" placeholder="İsteğe bağlı not..."
+                    value="<?php echo htmlspecialchars($pacal_notlar_degeri ?? '', ENT_QUOTES); ?>"
                     style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff">
             </div>
             <div class="col-4 col-md-2 text-end">
