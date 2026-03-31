@@ -13,6 +13,12 @@ sayfaErisimKontrol($baglanti);
 
 $mesaj = "";
 $hata = "";
+$kantar_okuma_kolon_var = false;
+
+$kolon_kontrol = @$baglanti->query("SHOW COLUMNS FROM hammadde_kabul_akisi LIKE 'kantar_okuma_id'");
+if ($kolon_kontrol && $kolon_kontrol->num_rows > 0) {
+    $kantar_okuma_kolon_var = true;
+}
 
 // Onay merkezinden onaylanmış ama satınalma listesine düşmemiş kayıtları otomatik ilerlet
 $baglanti->query("UPDATE hammadde_kabul_akisi SET asama = 'satina_bekliyor' WHERE asama = 'onaylandi' AND onay_durum = 'onaylandi'");
@@ -92,9 +98,22 @@ if (isset($_POST["hammadde_alimi_islem"])) {
 if (isset($_POST["hammadde_kantar_onayla"])) {
     $akis_id = (int) $_POST["akis_id"];
     $kantar_net_kg = (float) $_POST["kantar_net_kg"];
-    
+
+    $kantar_okuma_id = isset($_POST["kantar_okuma_id"]) ? (int) $_POST["kantar_okuma_id"] : 0;
+    $kantar_okuma_sql = '';
+
+    if ($kantar_okuma_kolon_var) {
+        $kantar_okuma_sql = ", kantar_okuma_id = " . ($kantar_okuma_id > 0 ? $kantar_okuma_id : "NULL");
+    }
+
     // Hem hammadde_kabul_akisi tablosuna kantar_net_kg'i işle, hem de onaylandi/tamamlandi yap
-    $baglanti->query("UPDATE hammadde_kabul_akisi SET asama = 'tamamlandi', kantar_net_kg = $kantar_net_kg, guncelleme_tarihi = NOW() WHERE id = $akis_id");
+    $baglanti->query("UPDATE hammadde_kabul_akisi
+                      SET asama = 'tamamlandi',
+                          kantar_net_kg = $kantar_net_kg,
+                          kantar_tarihi = NOW()
+                          $kantar_okuma_sql,
+                          guncelleme_tarihi = NOW()
+                      WHERE id = $akis_id");
     
     // Hammadde girişleri tablosundaki miktar_kg da güncellensin
     $baglanti->query("UPDATE hammadde_girisleri hg
@@ -858,6 +877,7 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                     </div>
                     <form method="post">
                         <input type="hidden" name="akis_id" id="modal_kantar_akis_id">
+                        <input type="hidden" name="kantar_okuma_id" id="modal_kantar_okuma_id" value="">
                         
                         <div class="row mb-3">
                             <div class="col-6">
@@ -915,6 +935,7 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
             document.getElementById('modal_kantar_hammadde').value = hammadde;
             document.getElementById('modal_kantar_tedarikci').value = tedarikci;
             document.getElementById('modal_kantar_kg').value = ''; // Temizle
+            document.getElementById('modal_kantar_okuma_id').value = '';
             
             var modal = new bootstrap.Modal(document.getElementById('kantarOnayModal'));
             modal.show();
@@ -987,6 +1008,9 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                     timeout: 5000,
                     success: function (data) {
                         if (data.basari) {
+                            if (typeof data.kantar_okuma_id !== 'undefined') {
+                                $('#modal_kantar_okuma_id').val(data.kantar_okuma_id || '');
+                            }
                             if (data.net_kg > 0) {
                                 $('#modal_kantar_kg').val(data.net_kg);
                             }

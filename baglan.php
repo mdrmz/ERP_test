@@ -8,7 +8,7 @@ $sifre = "";
 $veritabani = "yonetim_paneli";
 
 $baglanti = new mysqli($host, $kullanici, $sifre, $veritabani);
-$baglanti->set_charset("utf8");
+$baglanti->set_charset("utf8mb4");
 
 if ($baglanti->connect_error) {
     die("Bağlantı hatası: " . $baglanti->connect_error);
