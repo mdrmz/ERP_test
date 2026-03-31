@@ -44,11 +44,44 @@ if (isset($_POST["tavlama1_kaydet"])) {
     if ($pacal_id <= 0 || empty($baslama_tarihi)) {
         $hata = "Paçal seçimi ve Başlama Tarihi zorunludur.";
     } else {
-        $sql_t1 = "INSERT INTO uretim_tavlama_1 (pacal_id, baslama_tarihi, bitis_tarihi, su_derecesi, ortam_derecesi, toplam_tonaj, karisim_degerleri, olusturan)
-                   VALUES ($pacal_id, '$baslama_tarihi', $bitis_tarihi, $su_derecesi, $ortam_derecesi, $toplam_tonaj, '$karisim', '{$_SESSION["kadi"]}')";
+        $baglanti->begin_transaction();
+        try {
+            // Lock and check pacal
+            $p_res = $baglanti->query("SELECT parti_no, durum FROM uretim_pacal WHERE id = $pacal_id FOR UPDATE");
+            if (!$p_res || $p_res->num_rows === 0) {
+                throw new Exception("Seçilen paçal bulunamadı.");
+            }
+            $p_row = $p_res->fetch_assoc();
+            if ($p_row['durum'] !== 'hazirlaniyor') {
+                throw new Exception("Bu paçal zaten işlenmiş veya üretime alınmış.");
+            }
+            $pacal_parti_no = $p_row['parti_no'];
 
-        if ($baglanti->query($sql_t1)) {
+            $sql_t1 = "INSERT INTO uretim_tavlama_1 (pacal_id, baslama_tarihi, bitis_tarihi, su_derecesi, ortam_derecesi, toplam_tonaj, karisim_degerleri, olusturan)
+                       VALUES ($pacal_id, '$baslama_tarihi', $bitis_tarihi, $su_derecesi, $ortam_derecesi, $toplam_tonaj, '$karisim', '{$_SESSION["kadi"]}')";
+
+            if (!$baglanti->query($sql_t1)) {
+                throw new Exception("Tavlama kayıt hatası: " . $baglanti->error);
+            }
             $tavlama_1_id = $baglanti->insert_id;
+
+            // FIFO Düşümü
+            $elek_alti_yuzde = 0; // İleride ayarlardan çekilebilir
+            $pd_res = $baglanti->query("SELECT silo_id, miktar_kg FROM uretim_pacal_detay WHERE pacal_id = $pacal_id");
+            while ($pd = $pd_res->fetch_assoc()) {
+                $silo_id = (int)$pd['silo_id'];
+                $miktar = (float)$pd['miktar_kg'];
+                if ($silo_id > 0 && $miktar > 0) {
+                    $fifo_sonuc = fifoDusumYap($baglanti, $silo_id, $miktar, $pacal_parti_no, $elek_alti_yuzde);
+                    if ($fifo_sonuc['dusulemeyen_kg'] > 0) {
+                        throw new Exception("Yetersiz stok! Silo ID: $silo_id için depoda " . $fifo_sonuc['dusulemeyen_kg'] . " KG eksik.");
+                    }
+                }
+            }
+
+            // Paçal durumunu güncelle
+            $baglanti->query("UPDATE uretim_pacal SET durum = 'tavlamada' WHERE id = $pacal_id");
+
             $tsatirlar = $_POST["tsatir"] ?? [];
 
             foreach ($tsatirlar as $ts) {
@@ -84,9 +117,12 @@ if (isset($_POST["tavlama1_kaydet"])) {
                                  $a_p, $a_g, $a_pl, $a_w, $a_ie, $fn, $p_protein, $p_sertlik, $p_nisasta)";
                 $baglanti->query($sql_tdetay);
             }
-            $mesaj = "✅ Tavlama 1 kaydı başarıyla oluşturuldu.";
-        } else {
-            $hata = "Tavlama kayıt hatası: " . $baglanti->error;
+            
+            $baglanti->commit();
+            $mesaj = "✅ Tavlama 1 kaydı başarıyla oluşturuldu ve paçal stoklardan düşüldü.";
+        } catch (Exception $e) {
+            $baglanti->rollback();
+            $hata = $e->getMessage();
         }
     }
 }

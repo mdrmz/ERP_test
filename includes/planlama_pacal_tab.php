@@ -7,7 +7,9 @@
 $silo_listesi = [];
 $silo_res = $baglanti->query("
     SELECT s.id, s.silo_adi, s.tip, s.kapasite_m3, s.doluluk_m3, s.aktif_hammadde_kodu, s.yogunluk,
-           h.ad as hammadde_adi, h.hammadde_kodu
+           h.ad as hammadde_adi, h.hammadde_kodu,
+           (SELECT COALESCE(SUM(kalan_miktar_kg),0) FROM silo_stok_detay WHERE silo_id = s.id AND durum='aktif') as toplam_kalan_kg,
+           (SELECT COALESCE(SUM(pd.miktar_kg),0) FROM uretim_pacal_detay pd JOIN uretim_pacal p ON pd.pacal_id = p.id WHERE p.durum='hazirlaniyor' AND pd.silo_id = s.id) as rezerve_kg
     FROM silolar s
     LEFT JOIN hammaddeler h ON s.aktif_hammadde_kodu = h.hammadde_kodu
     WHERE s.tip='bugday' AND s.durum='aktif'
@@ -15,6 +17,7 @@ $silo_res = $baglanti->query("
 ");
 if ($silo_res) {
     while ($row = $silo_res->fetch_assoc()) {
+        $row['serbest_kg'] = $row['toplam_kalan_kg'] - $row['rezerve_kg'];
         $silo_listesi[] = $row;
     }
 }
@@ -153,12 +156,15 @@ $son_pacallar = $baglanti->query("
                             <option value="">-- Silo Seç --</option>
                             <?php foreach ($silo_listesi as $s):
                                 $doluluk = ($s['kapasite_m3'] > 0) ? round(($s['doluluk_m3'] / $s['kapasite_m3']) * 100) : 0;
-                                $label = $s['silo_adi'] . ' (' . ($s['hammadde_adi'] ?? 'Boş') . ' - ' . $doluluk . '%)';
+                                $serbest = isset($s['serbest_kg']) ? (float)$s['serbest_kg'] : 0;
+                                $label = $s['silo_adi'] . ' (' . ($s['hammadde_adi'] ?? 'Boş') . ' | Serbest: ' . number_format($serbest, 0, ',', '.') . ' KG)';
+                                $disabled = ($serbest <= 0) ? 'disabled' : '';
                             ?>
-                                <option value="<?php echo $s['id']; ?>" 
+                                <option value="<?php echo $s['id']; ?>" <?php echo $disabled; ?>
                                     data-hammadde="<?php echo htmlspecialchars($s['hammadde_adi'] ?? ''); ?>"
                                     data-kod="<?php echo htmlspecialchars($s['hammadde_kodu'] ?? ''); ?>"
-                                    data-hid="<?php echo htmlspecialchars($s['aktif_hammadde_kodu'] ?? ''); ?>">
+                                    data-hid="<?php echo htmlspecialchars($s['aktif_hammadde_kodu'] ?? ''); ?>"
+                                    data-serbest="<?php echo $serbest; ?>">
                                     <?php echo htmlspecialchars($label); ?>
                                 </option>
                             <?php endforeach; ?>

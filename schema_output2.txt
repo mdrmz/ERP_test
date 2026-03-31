@@ -1,0 +1,64 @@
+
+TABLE uretim_pacal:
+id - int(11)
+tarih - date
+urun_adi - varchar(100)
+parti_no - varchar(100)
+toplam_miktar_kg - decimal(10,2)
+notlar - text
+durum - varchar(50)
+olusturan - varchar(100)
+olusturma_tarihi - timestamp
+
+TABLE uretim_pacal_detay:
+id - int(11)
+pacal_id - int(11)
+sira_no - int(11)
+hammadde_id - int(11)
+hammadde_parti_no - varchar(100)
+kod - varchar(100)
+yoresi - varchar(100)
+miktar_kg - decimal(10,2)
+oran - decimal(5,2)
+kirli_ambar_no - varchar(50)
+yas_ambar_no - varchar(50)
+gluten - decimal(10,2)
+g_index - int(11)
+n_sedim - int(11)
+g_sedim - int(11)
+hektolitre - decimal(10,2)
+nem - decimal(10,2)
+alveo_p - decimal(10,2)
+alveo_g - decimal(10,2)
+alveo_pl - decimal(10,2)
+alveo_w - int(11)
+alveo_ie - decimal(10,2)
+fn - int(11)
+perten_protein - decimal(10,2)
+perten_sertlik - decimal(10,2)
+perten_nisasta - decimal(10,2)
+
+TABLE silo_stok_detay:
+id - int(11)
+silo_id - int(11)
+parti_kodu - varchar(50)
+hammadde_turu - varchar(100)
+giren_miktar_kg - decimal(10,2)
+kalan_miktar_kg - decimal(10,2)
+giris_tarihi - datetime
+durum - enum('aktif','tükendi')
+
+TABLE silolar:
+id - int(11)
+silo_adi - varchar(100)
+tip - varchar(50)
+kapasite_m3 - decimal(10,2)
+doluluk_m3 - decimal(10,2)
+aktif_hammadde_kodu - varchar(50)
+izin_verilen_hammadde_kodlari - text
+min_doluluk_uyari - decimal(10,2)
+max_doluluk_uyari - decimal(10,2)
+son_temizlik_tarihi - date
+durum - varchar(20)
+sicaklik_sensor_id - varchar(50)
+yogunluk - decimal(10,3)

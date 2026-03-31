@@ -96,8 +96,8 @@ if (isset($_POST["pacal_kaydet"])) {
                 $toplam_kg += floatval($s["miktar_kg"] ?? 0);
         }
 
-        $sql = "INSERT INTO uretim_pacal (tarih, urun_adi, parti_no, toplam_miktar_kg, notlar, olusturan)
-                VALUES ('$tarih', '$urun_adi', '$parti_no', $toplam_kg, '$notlar', '{$_SESSION["kadi"]}')";
+        $sql = "INSERT INTO uretim_pacal (tarih, urun_adi, parti_no, toplam_miktar_kg, notlar, durum, olusturan)
+                VALUES ('$tarih', '$urun_adi', '$parti_no', $toplam_kg, '$notlar', 'hazirlaniyor', '{$_SESSION["kadi"]}')";
 
         if ($baglanti->query($sql)) {
             $pacal_id = $baglanti->insert_id;
@@ -124,11 +124,11 @@ if (isset($_POST["pacal_kaydet"])) {
                 }
 
                 $sql_d = "INSERT INTO uretim_pacal_detay 
-                    (pacal_id, sira_no, hammadde_id, kod, miktar_kg, oran,
+                    (pacal_id, silo_id, sira_no, hammadde_id, kod, miktar_kg, oran,
                      gluten, g_index, n_sedim, g_sedim, hektolitre, nem,
                      alveo_p, alveo_g, alveo_pl, alveo_w, alveo_ie, fn,
                      perten_protein, perten_sertlik, perten_nisasta)
-                    VALUES ($pacal_id, $sira, $h_id, '$kod', $miktar, $oran,
+                    VALUES ($pacal_id, $silo_id, $sira, $h_id, '$kod', $miktar, $oran,
                             " . implode(',', $vals) . ")";
                 $baglanti->query($sql_d);
             }
@@ -379,18 +379,35 @@ $aktif_tab = $force_tab ?: ($_GET['tab'] ?? 'haftalik');
         const opt = selectEl.options[selectEl.selectedIndex];
         const siloId = selectEl.value;
         const hammaddeAdi = opt?.dataset?.hammadde || '';
-        const hammaddeKodu = opt?.dataset?.kod || '';
         const hid = opt?.dataset?.hid || '';
 
         document.querySelector(`.bugday-cinsi[data-row="${row}"]`).value = hammaddeAdi;
         document.querySelector(`.hammadde-id-hidden[data-row="${row}"]`).value = hid;
 
-        if (hammaddeKodu) {
-            if (!kodSayac[hammaddeKodu]) kodSayac[hammaddeKodu] = 1000;
-            kodSayac[hammaddeKodu]++;
-            document.querySelector(`.kod-field[data-row="${row}"]`).value = hammaddeKodu + '-' + kodSayac[hammaddeKodu];
+        const maxValEl = document.querySelector(`.miktar-field[data-row="${row}"]`);
+
+        if (siloId) {
+            // Fetch FIFO code and limits
+            fetch(`ajax/silo_fifo_getir.php?silo_id=${siloId}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        document.querySelector(`.kod-field[data-row="${row}"]`).value = data.fifo_kodu || '';
+                        
+                        if(maxValEl) {
+                           maxValEl.dataset.max = data.serbest_kg;
+                           maxValEl.setAttribute('title', 'Maksimum serbest stok: ' + data.serbest_kg.toLocaleString('tr-TR') + ' KG');
+                        }
+                    } else {
+                        document.querySelector(`.kod-field[data-row="${row}"]`).value = '';
+                    }
+                }).catch(err => console.error('FIFO verisi hatası:', err));
         } else {
             document.querySelector(`.kod-field[data-row="${row}"]`).value = '';
+            if(maxValEl) {
+                maxValEl.removeAttribute('data-max');
+                maxValEl.removeAttribute('title');
+            }
         }
 
         // Lab verilerini çek
@@ -462,7 +479,21 @@ $aktif_tab = $force_tab ?: ($_GET['tab'] ?? 'haftalik');
         }
 
         let topO=0;
-        for(let r=1;r<=7;r++) topO += parseFloat(document.querySelector(`.oran-field[data-row="${r}"]`)?.value)||0;
+        for(let r=1;r<=7;r++) {
+            topO += parseFloat(document.querySelector(`.oran-field[data-row="${r}"]`)?.value)||0;
+            
+            // Stok validasyonu
+            let miktarEl = document.querySelector(`.miktar-field[data-row="${r}"]`);
+            if (miktarEl) {
+                let miktar = parseFloat(miktarEl.value) || 0;
+                let maxVal = parseFloat(miktarEl.dataset.max);
+                if (!isNaN(maxVal) && miktar > maxVal) {
+                    e.preventDefault();
+                    Swal.fire({icon:'error',title:'Yetersiz Stok!',text: r + '. satırdaki giriş ('+miktar+' KG), silodaki serbest stok limitini ('+maxVal.toLocaleString('tr-TR')+' KG) aşıyor!',confirmButtonColor:'#0f172a'});
+                    return;
+                }
+            }
+        }
         if(topO>0 && Math.abs(topO-100)>0.05){
             e.preventDefault();
             Swal.fire({icon:'error',title:'Hata!',text:'Paçal oranları toplamı 100 olmalı! (Şu an: '+topO.toFixed(2)+')',confirmButtonColor:'#0f172a'});
