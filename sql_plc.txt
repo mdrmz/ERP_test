@@ -1,0 +1,33 @@
+CREATE TABLE plc_cihazlari (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  cihaz_adi VARCHAR(100) NOT NULL,
+  cihaz_tipi ENUM('akar_kantar','randiman','oto_tav','flow') NOT NULL,
+  ip_adresi VARCHAR(15) NOT NULL,
+  port INT DEFAULT 502,
+  unit_id INT DEFAULT 1,
+  aktif TINYINT DEFAULT 1,
+  son_baglanti DATETIME NULL,
+  UNIQUE KEY uq_ip (ip_adresi)
+);
+
+
+CREATE TABLE plc_etiketleri (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  cihaz_id INT NOT NULL,
+  etiket_adi VARCHAR(100) NOT NULL,
+  modbus_adres INT NOT NULL COMMENT 'Register adresi (MW numarası)',
+  veri_tipi ENUM('INT','FLOAT','DOUBLE','REAL','BIT','BOOL') NOT NULL,
+  register_sayisi INT DEFAULT 1 COMMENT 'Kaç register okunacak (Double=2)',
+  carpan DECIMAL(10,4) DEFAULT 1.0,
+  birim VARCHAR(20) DEFAULT '',
+  FOREIGN KEY (cihaz_id) REFERENCES plc_cihazlari(id)
+);
+
+CREATE TABLE plc_okumalari (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  cihaz_id INT NOT NULL,
+  okuma_zamani DATETIME NOT NULL,
+  veriler JSON NOT NULL COMMENT '{"AKIS": 12.5, "GUNLUK": 340.2, ...}',
+  INDEX idx_cihaz_zaman (cihaz_id, okuma_zamani),
+  FOREIGN KEY (cihaz_id) REFERENCES plc_cihazlari(id)
+);

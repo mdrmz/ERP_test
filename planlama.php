@@ -1,24 +1,129 @@
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
-
 session_start();
 include("baglan.php");
 include("helper_functions.php");
 
-// Güvenlik
-if (!isset($_SESSION["oturum"])) {
-    header("Location: login.php");
-    exit;
-}
-
-// Modül bazlı yetki kontrolü
+if (!isset($_SESSION["oturum"])) { header("Location: login.php"); exit; }
 sayfaErisimKontrol($baglanti);
 
 $mesaj = "";
 $hata = "";
 
-// --- 1. YENİ REÇETE EKLEME İŞLEMİ ---
+// ==================== BACKEND İŞLEMLERİ ====================
+
+// --- PAÇAL KAYDET ---
+if (isset($_POST["pacal_kaydet"])) {
+    $tarih = $baglanti->real_escape_string($_POST["pacal_tarih"]);
+    $urun_adi = $baglanti->real_escape_string(trim($_POST["urun_adi"]));
+    $parti_no = $baglanti->real_escape_string(trim($_POST["pacal_parti_no"]));
+    $notlar = $baglanti->real_escape_string(trim($_POST["pacal_notlar"] ?? ''));
+
+    if (empty($tarih) || empty($urun_adi) || empty($parti_no)) {
+        $hata = "Tarih, ürün adı ve parti numarası zorunludur.";
+    }
+
+    if (empty($hata)) {
+        $dup = $baglanti->query("SELECT id FROM uretim_pacal WHERE parti_no = '$parti_no'");
+        if ($dup && $dup->num_rows > 0) $hata = "Bu parti numarası zaten kullanılmış: $parti_no";
+    }
+
+    if (empty($hata)) {
+        $satirlar = $_POST["satirlar"] ?? [];
+        $dolu_satir = 0; $toplam_oran = 0;
+        foreach ($satirlar as $s) {
+            if (!empty($s["silo_id"]) && $s["silo_id"] > 0) {
+                $dolu_satir++;
+                $toplam_oran += floatval($s["oran"] ?? 0);
+            }
+        }
+        if ($dolu_satir == 0) $hata = "En az bir silo seçmelisiniz.";
+        elseif (abs($toplam_oran - 100) > 0.1) $hata = "Paçal oranları toplamı %100 olmalıdır. (Şu an: " . number_format($toplam_oran,2) . ")";
+    }
+
+    if (empty($hata)) {
+        $toplam_kg = 0;
+        foreach ($satirlar as $s) {
+            if (!empty($s["silo_id"]) && $s["silo_id"] > 0)
+                $toplam_kg += floatval($s["miktar_kg"] ?? 0);
+        }
+
+        $sql = "INSERT INTO uretim_pacal (tarih, urun_adi, parti_no, toplam_miktar_kg, notlar, olusturan)
+                VALUES ('$tarih', '$urun_adi', '$parti_no', $toplam_kg, '$notlar', '{$_SESSION["kadi"]}')";
+
+        if ($baglanti->query($sql)) {
+            $pacal_id = $baglanti->insert_id;
+            foreach ($satirlar as $sira => $s) {
+                $silo_id = (int)($s["silo_id"] ?? 0);
+                if ($silo_id <= 0) continue;
+
+                // Silo'dan hammadde bilgisini al
+                $silo_info = $baglanti->query("SELECT s.aktif_hammadde_kodu, h.id as hammadde_id, h.hammadde_kodu 
+                    FROM silolar s LEFT JOIN hammaddeler h ON s.aktif_hammadde_kodu = h.hammadde_kodu 
+                    WHERE s.id = $silo_id")->fetch_assoc();
+                $h_id = (int)($silo_info['hammadde_id'] ?? 0);
+                $kod = $baglanti->real_escape_string($s["kod"] ?? '');
+                $miktar = floatval($s["miktar_kg"] ?? 0);
+                $oran = floatval($s["oran"] ?? 0);
+
+                $fields = ['gluten','g_index','n_sedim','g_sedim','hektolitre','nem',
+                           'alveo_p','alveo_g','alveo_pl','alveo_w','alveo_ie','fn',
+                           'perten_protein','perten_sertlik','perten_nisasta'];
+                $vals = [];
+                foreach ($fields as $f) {
+                    $v = $s[$f] ?? '';
+                    $vals[] = is_numeric($v) ? floatval($v) : 'NULL';
+                }
+
+                $sql_d = "INSERT INTO uretim_pacal_detay 
+                    (pacal_id, sira_no, hammadde_id, kod, miktar_kg, oran,
+                     gluten, g_index, n_sedim, g_sedim, hektolitre, nem,
+                     alveo_p, alveo_g, alveo_pl, alveo_w, alveo_ie, fn,
+                     perten_protein, perten_sertlik, perten_nisasta)
+                    VALUES ($pacal_id, $sira, $h_id, '$kod', $miktar, $oran,
+                            " . implode(',', $vals) . ")";
+                $baglanti->query($sql_d);
+            }
+            $mesaj = "Paçal kaydı başarılı! Parti No: $parti_no";
+        } else {
+            $hata = "SQL Hatası: " . $baglanti->error;
+        }
+    }
+}
+
+// --- PAÇAL SİL ---
+if (isset($_GET["sil_pacal"])) {
+    $sil_id = (int)$_GET["sil_pacal"];
+    $baglanti->query("DELETE FROM uretim_pacal_detay WHERE pacal_id = $sil_id");
+    $baglanti->query("DELETE FROM uretim_pacal WHERE id = $sil_id");
+    header("Location: planlama.php?tab=pacal&msg=pacal_silindi");
+    exit;
+}
+
+// --- HAFTALIK PLAN EKLE ---
+if (isset($_POST["plan_ekle"])) {
+    $pUrun = $baglanti->real_escape_string(trim($_POST["plan_urun"]));
+    $pMiktar = floatval($_POST["plan_miktar"]);
+    $pOncelik = $baglanti->real_escape_string($_POST["plan_oncelik"]);
+    $pHafta = (int)$_POST["hafta_no"];
+    $pYil = (int)$_POST["yil"];
+    
+    if (!empty($pUrun) && $pMiktar > 0) {
+        $baglanti->query("INSERT INTO haftalik_plan (hafta_no, yil, urun_adi, miktar_ton, oncelik, olusturan) 
+            VALUES ($pHafta, $pYil, '$pUrun', $pMiktar, '$pOncelik', '{$_SESSION["kadi"]}')");
+        $mesaj = "Haftalık plana eklendi: $pUrun";
+    }
+}
+
+// --- HAFTALIK PLAN SİL ---
+if (isset($_POST["plan_sil"])) {
+    $sil_id = (int)$_POST["sil_plan_id"];
+    $baglanti->query("DELETE FROM haftalik_plan WHERE id = $sil_id");
+    $mesaj = "Plan kaydı silindi.";
+}
+
+// --- YENİ REÇETE EKLEME ---
 if (isset($_POST["recete_ekle"])) {
     $ad = $baglanti->real_escape_string($_POST["recete_adi"]);
     $tav = $_POST["tav_miktar"] ?: 0;
@@ -26,576 +131,318 @@ if (isset($_POST["recete_ekle"])) {
     $isi = $_POST["sicaklik"] ?: 0;
     $nem = $_POST["hedef_nem"] ?: 0;
     $aciklama = $baglanti->real_escape_string($_POST["aciklama"] ?? '');
-
     $sql = "INSERT INTO receteler (recete_adi, tav_miktar, sure_saat, sicaklik, hedef_nem, aciklama) 
             VALUES ('$ad', $tav, $sure, $isi, $nem, '$aciklama')";
-
     if ($baglanti->query($sql)) {
-        header("Location: planlama.php?msg=recete_ok&ad=" . urlencode($ad));
-        exit;
+        $mesaj = "Yeni reçete tanımlandı: $ad";
     } else {
-        $hata = "Hata oluştu: " . $baglanti->error;
+        $hata = "Hata: " . $baglanti->error;
     }
 }
 
-// Success messages from redirect
-if (isset($_GET['msg'])) {
-    if ($_GET['msg'] == 'recete_ok') {
-        $mesaj = "✅ Yeni reçete başarıyla tanımlandı: " . htmlspecialchars($_GET['ad'] ?? '');
-    }
-    if ($_GET['msg'] == 'emir_ok') {
-        $mesaj = "✅ İş emri yayınlandı! Kod: <b>" . htmlspecialchars($_GET['kod'] ?? '') . "</b>";
-    }
-}
-
-// --- 2. İŞ EMRİ OLUŞTURMA İŞLEMİ ---
+// --- İŞ EMRİ OLUŞTURMA ---
 if (isset($_POST["is_emri_ver"])) {
-    $recete_id = (int) $_POST["recete_id"];
+    $recete_id = (int)$_POST["recete_id"];
     $hedef_ton = $_POST["hedef_miktar"] ?: 0;
     $personel = $baglanti->real_escape_string($_POST["atanan_personel"] ?? '');
     $yikama_parti_no = $baglanti->real_escape_string($_POST["yikama_parti_no"] ?? '');
-
-    // Silo yüzdeleri kontrolü
     $silo_ids = $_POST["silo_id"] ?? [];
     $silo_yuzdeleri = $_POST["silo_yuzde"] ?? [];
-
-    // Yüzde toplamı kontrolü
-    $toplam_yuzde = 0;
-    $gecerli_silolar = [];
+    $toplam_yuzde = 0; $gecerli_silolar = [];
     for ($i = 0; $i < count($silo_ids); $i++) {
         if (!empty($silo_ids[$i]) && !empty($silo_yuzdeleri[$i])) {
-            $toplam_yuzde += (float) $silo_yuzdeleri[$i];
-            $gecerli_silolar[] = [
-                'silo_id' => (int) $silo_ids[$i],
-                'yuzde' => (float) $silo_yuzdeleri[$i]
-            ];
+            $toplam_yuzde += (float)$silo_yuzdeleri[$i];
+            $gecerli_silolar[] = ['silo_id'=>(int)$silo_ids[$i], 'yuzde'=>(float)$silo_yuzdeleri[$i]];
         }
     }
-
-    if (empty($gecerli_silolar)) {
-        $hata = "En az bir silo seçmelisiniz!";
-    } elseif (abs($toplam_yuzde - 100) > 0.1) {
-        $hata = "Silo yüzdelerinin toplamı %100 olmalı! (Şu an: %" . number_format($toplam_yuzde, 1) . ")";
-    } else {
-        // Otomatik İş Kodu Üret (Örn: URT-8423)
-        $kod = "URT-" . rand(1000, 9999);
-
+    if (empty($gecerli_silolar)) { $hata = "En az bir silo seçmelisiniz!"; }
+    elseif (abs($toplam_yuzde - 100) > 0.1) { $hata = "Silo yüzdelerinin toplamı %100 olmalı!"; }
+    else {
+        $kod = "URT-" . rand(1000,9999);
         $sql = "INSERT INTO is_emirleri (is_kodu, recete_id, yikama_parti_no, hedef_miktar_ton, baslangic_tarihi, durum, atanan_personel) 
-                VALUES ('$kod', $recete_id, ";
-        $sql .= $yikama_parti_no ? "'$yikama_parti_no'" : "NULL";
-        $sql .= ", $hedef_ton, NOW(), 'bekliyor', '$personel')";
-
+                VALUES ('$kod', $recete_id, " . ($yikama_parti_no ? "'$yikama_parti_no'" : "NULL") . ", $hedef_ton, NOW(), 'bekliyor', '$personel')";
         if ($baglanti->query($sql)) {
-            $yeni_is_emri_id = $baglanti->insert_id;
-
-            // Silo karışımlarını kaydet
+            $yeni_id = $baglanti->insert_id;
             foreach ($gecerli_silolar as $silo) {
-                $silo_id = $silo['silo_id'];
-                $yuzde = $silo['yuzde'];
-                $sql_silo = "INSERT INTO is_emri_silo_karisimlari (is_emri_id, silo_id, yuzde) 
-                             VALUES ($yeni_is_emri_id, $silo_id, $yuzde)";
-                $baglanti->query($sql_silo);
+                $baglanti->query("INSERT INTO is_emri_silo_karisimlari (is_emri_id, silo_id, yuzde) VALUES ($yeni_id, {$silo['silo_id']}, {$silo['yuzde']})");
             }
-
-            // === ONAY SİSTEMİ - Patron onayı gerekli ===
-            // Reçete adını al
-            $recete_result = $baglanti->query("SELECT recete_adi FROM receteler WHERE id = $recete_id");
-            $recete_adi = ($recete_result && $r = $recete_result->fetch_assoc()) ? $r['recete_adi'] : 'Bilinmeyen Reçete';
-
-            onayOlustur(
-                $baglanti,
-                'is_emri',
-                $yeni_is_emri_id,
-                "İş Emri: $kod | Reçete: $recete_adi | Hedef: {$hedef_ton} ton"
-            );
-
-            // === BİLDİRİM - Patron'a bildirim gönder ===
-            bildirimOlustur(
-                $baglanti,
-                'onay_bekleniyor',
-                "Yeni İş Emri Onay Bekliyor: $kod",
-                "Reçete: $recete_adi | Hedef: {$hedef_ton} ton | Personel: $personel",
-                1, // Patron rol_id
-                null,
-                'is_emirleri',
-                $yeni_is_emri_id,
-                'onay_merkezi.php'
-            );
-
-            // === SYSTEM LOG KAYDI ===
-            systemLogKaydet(
-                $baglanti,
-                'INSERT',
-                'Planlama',
-                "Yeni iş emri oluşturuldu: $kod | Reçete: $recete_adi | Hedef: {$hedef_ton} ton"
-            );
-
-            header("Location: planlama.php?msg=emir_ok&kod=" . urlencode($kod));
-            exit;
-        } else {
-            $hata = "Hata: " . $baglanti->error;
-        }
+            $recete_adi = '';
+            $rr = $baglanti->query("SELECT recete_adi FROM receteler WHERE id = $recete_id");
+            if ($rr && $r = $rr->fetch_assoc()) $recete_adi = $r['recete_adi'];
+            onayOlustur($baglanti, 'is_emri', $yeni_id, "İş Emri: $kod | Reçete: $recete_adi | Hedef: {$hedef_ton} ton");
+            bildirimOlustur($baglanti, 'onay_bekleniyor', "Yeni İş Emri Onay Bekliyor: $kod", "Reçete: $recete_adi | Hedef: {$hedef_ton} ton", 1, null, 'is_emirleri', $yeni_id, 'onay_merkezi.php');
+            systemLogKaydet($baglanti, 'INSERT', 'Planlama', "Yeni iş emri: $kod | Reçete: $recete_adi | {$hedef_ton} ton");
+            $mesaj = "İş emri yayınlandı! Kod: $kod";
+        } else { $hata = "Hata: " . $baglanti->error; }
     }
 }
 
-// LİSTELERİ ÇEK
-$receteler = $baglanti->query("SELECT * FROM receteler ORDER BY id DESC");
+// Success msg from redirect
+if (isset($_GET['msg'])) {
+    if ($_GET['msg'] == 'pacal_silindi') $mesaj = "Paçal kaydı silindi.";
+}
 
-// Buğday silolarını çek
+// ==================== VERİ ÇEKİMLERİ ====================
+$receteler = $baglanti->query("SELECT * FROM receteler ORDER BY id DESC");
 $bugday_silolari = $baglanti->query("SELECT * FROM silolar WHERE tip='bugday' AND durum='aktif' ORDER BY silo_adi");
 $bugday_silolari_arr = [];
-while ($s = $bugday_silolari->fetch_assoc()) {
-    $bugday_silolari_arr[] = $s;
-}
+if ($bugday_silolari) while ($s = $bugday_silolari->fetch_assoc()) $bugday_silolari_arr[] = $s;
 
-// Yıkama partilerini getir
-$yikama_partileri = $baglanti->query("
-    SELECT parti_no, yikama_tarihi, urun_adi
-    FROM yikama_kayitlari
-    WHERE parti_no IS NOT NULL AND parti_no != ''
-    ORDER BY yikama_tarihi DESC
-    LIMIT 50
-");
+$yikama_partileri = $baglanti->query("SELECT parti_no, yikama_tarihi, urun_adi FROM yikama_kayitlari WHERE parti_no IS NOT NULL AND parti_no != '' ORDER BY yikama_tarihi DESC LIMIT 50");
 
-// Aktif iş emirleri (silo karışımı ile birlikte)
 $aktif_emirler = $baglanti->query("
-    SELECT ie.*, r.recete_adi,
-           GROUP_CONCAT(CONCAT(s.silo_adi, ':', isk.yuzde, '%') SEPARATOR ', ') as silo_karisimi
-    FROM is_emirleri ie 
-    JOIN receteler r ON ie.recete_id = r.id 
+    SELECT ie.*, r.recete_adi, GROUP_CONCAT(CONCAT(s.silo_adi, ':', isk.yuzde, '%') SEPARATOR ', ') as silo_karisimi
+    FROM is_emirleri ie JOIN receteler r ON ie.recete_id = r.id 
     LEFT JOIN is_emri_silo_karisimlari isk ON ie.id = isk.is_emri_id
-    LEFT JOIN silolar s ON isk.silo_id = s.id
-    GROUP BY ie.id
-    ORDER BY ie.id DESC
+    LEFT JOIN silolar s ON isk.silo_id = s.id GROUP BY ie.id ORDER BY ie.id DESC
 ");
-?>
 
+$aktif_tab = $_GET['tab'] ?? 'haftalik';
+?>
 <!DOCTYPE html>
 <html lang="tr">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Üretim Planlama - Özbal Un</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.min.css" rel="stylesheet">
+    <style>
+        body { font-family:'Inter',system-ui,sans-serif; background:#f1f5f9!important; }
+        .page-header { background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%); color:#fff; border-radius:1.25rem; margin-top:1.25rem; margin-bottom:1.4rem; padding:1.55rem 1.7rem; box-shadow:0 16px 28px -14px rgba(15,23,42,.55); position:relative; overflow:hidden; }
+        .page-header::before { content:""; position:absolute; top:-65%; right:-10%; width:440px; height:440px; border-radius:50%; background:radial-gradient(circle,rgba(245,158,11,.2) 0%,rgba(245,158,11,0) 72%); pointer-events:none; }
+        .nav-tabs .nav-link { font-weight:600; color:#64748b; border:none; padding:14px 28px; border-radius:12px 12px 0 0; transition:all .3s; font-size:.95rem; }
+        .nav-tabs .nav-link.active { color:#fff; background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%); border:none; }
+        .nav-tabs .nav-link:hover:not(.active) { background:#e2e8f0; color:#1e293b; }
+        .tab-content { background:#fff; border-radius:0 0 15px 15px; padding:0; box-shadow:0 4px 15px rgba(0,0,0,.08); }
+        .tab-content .tab-pane { padding:20px; }
+        @media(max-width:768px) { .nav-tabs .nav-link { padding:10px 16px; font-size:.82rem; } .tab-content .tab-pane { padding:12px; } }
+    </style>
 </head>
-
-<body class="bg-light">
-
+<body>
     <?php include("navbar.php"); ?>
-
-    <div class="container">
-
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2><i class="fas fa-calendar-check text-primary"></i> Üretim Planlama</h2>
-            <button class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#yeniReceteModal">
-                <i class="fas fa-scroll"></i> Yeni Reçete Tanımla
-            </button>
-        </div>
-
-
-
-        <div class="row">
-            <div class="col-md-4 mb-4">
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0"><i class="fas fa-bullhorn"></i> İş Emri Oluştur</h5>
-                    </div>
-                    <div class="card-body">
-                        <form method="post">
-                            <div class="mb-3">
-                                <label class="form-label text-muted">Üretilecek Reçete</label>
-                                <select name="recete_id" class="form-select" required>
-                                    <option value="">Seçiniz...</option>
-                                    <?php
-                                    // Reçete listesini döngüye al, tekrar kullanmak için başa saracağız
-                                    $receteler->data_seek(0);
-                                    while ($r = $receteler->fetch_assoc()) {
-                                        echo "<option value='{$r["id"]}'>{$r["recete_adi"]}</option>";
-                                    }
-                                    ?>
-                                </select>
-                                <div class="form-text">Listede yoksa sağ üstten ekleyin.</div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label text-muted">Hedef Miktar (Ton)</label>
-                                <div class="input-group">
-                                    <input type="number" step="0.1" name="hedef_miktar" class="form-control"
-                                        placeholder="Örn: 50" required>
-                                    <span class="input-group-text">Ton</span>
-                                </div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label text-muted">
-                                    <i class="fas fa-link"></i> Yıkama Parti No (Opsiyonel)
-                                </label>
-                                <select name="yikama_parti_no" class="form-select">
-                                    <option value="">-- Belirtilmedi --</option>
-                                    <?php
-                                    if ($yikama_partileri && $yikama_partileri->num_rows > 0) {
-                                        while ($yp = $yikama_partileri->fetch_assoc()) {
-                                            ?>
-                                            <option value="<?php echo htmlspecialchars($yp["parti_no"]); ?>">
-                                                <?php echo htmlspecialchars($yp["parti_no"]) . " - " . htmlspecialchars($yp["urun_adi"] ?? "Bilinmiyor") . " (" . date("d.m.Y", strtotime($yp["yikama_tarihi"])) . ")"; ?>
-                                            </option>
-                                            <?php
-                                        }
-                                    }
-                                    ?>
-                                </select>
-                                <div class="form-text">Hangi yıkama partisinden üretim yapılacak?</div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label text-muted">Sorumlu Personel/Vardiya</label>
-                                <input type="text" name="atanan_personel" class="form-control"
-                                    placeholder="Örn: Ahmet Usta / A Vardiyası">
-                            </div>
-
-                            <!-- Silo Karışımı Bölümü -->
-                            <div class="mb-3">
-                                <label class="form-label text-muted">
-                                    <i class="fas fa-database"></i> Buğday Silo Karışımı (Paçal)
-                                </label>
-                                <div id="siloKarisimContainer">
-                                    <div class="silo-row d-flex align-items-center gap-2 mb-2">
-                                        <select name="silo_id[]" class="form-select silo-select" style="width: 60%;">
-                                            <option value="">Silo Seç...</option>
-                                            <?php foreach ($bugday_silolari_arr as $s) {
-                                                $doluluk = round(($s['doluluk_m3'] / $s['kapasite_m3']) * 100);
-                                                ?>
-                                                <option value="<?= $s['id'] ?>">
-                                                    <?= $s['silo_adi'] ?> (<?= $doluluk ?>% dolu)
-                                                </option>
-                                            <?php } ?>
-                                        </select>
-                                        <input type="number" name="silo_yuzde[]" class="form-control silo-yuzde"
-                                            placeholder="%" min="0" max="100" step="0.1" style="width: 80px;">
-                                        <span class="text-muted">%</span>
-                                        <button type="button" class="btn btn-outline-danger btn-sm btn-silo-sil"
-                                            disabled>
-                                            <i class="fas fa-times"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="btnSiloEkle">
-                                    <i class="fas fa-plus"></i> Silo Ekle
-                                </button>
-                                <div class="form-text">
-                                    Toplam: <span id="toplamYuzde" class="fw-bold">0</span>%
-                                    <span id="yuzdeUyari" class="text-danger d-none">(Toplam %100 olmalı!)</span>
-                                </div>
-                            </div>
-
-                            <button type="submit" name="is_emri_ver" class="btn btn-primary w-100">
-                                <i class="fas fa-paper-plane"></i> Emri Yayınla
-                            </button>
-                        </form>
-                    </div>
+    <div class="container-fluid px-md-4 pb-4" style="max-width:1680px;margin:0 auto">
+        <div class="page-header">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h2 class="fw-bold mb-1"><i class="fas fa-calendar-check me-2"></i>Üretim Planlama</h2>
+                    <p class="mb-0" style="color:rgba(255,255,255,.78)">Haftalık plan, paçal hazırlama ve iş emirleri</p>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-outline-light" data-bs-toggle="modal" data-bs-target="#yeniReceteModal">
+                        <i class="fas fa-scroll me-1"></i> Yeni Reçete
+                    </button>
                 </div>
             </div>
+        </div>
 
-            <div class="col-md-8">
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-white">
-                        <h5 class="mb-0 text-secondary">Yayındaki İş Emirleri</h5>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>İş Kodu</th>
-                                    <th>Reçete</th>
-                                    <th>Hedef</th>
-                                    <th>Silo Karışımı</th>
-                                    <th>Durum</th>
-                                    <th>Sorumlu</th>
-                                    <th>İşlem</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if ($aktif_emirler->num_rows > 0) {
-                                    while ($is = $aktif_emirler->fetch_assoc()) {
-                                        $renk = ($is["durum"] == 'bekliyor') ? 'bg-warning text-dark' : 'bg-primary';
-                                        ?>
-                                        <tr>
-                                            <td><span class="badge bg-dark"><?php echo $is["is_kodu"]; ?></span></td>
-                                            <td class="fw-bold"><?php echo $is["recete_adi"]; ?></td>
-                                            <td><?php echo $is["hedef_miktar_ton"]; ?> Ton</td>
-                                            <td class="small">
-                                                <?php echo $is["silo_karisimi"] ?: '<span class="text-muted">-</span>'; ?>
-                                            </td>
-                                            <td><span
-                                                    class="badge <?php echo $renk; ?>"><?php echo strtoupper($is["durum"]); ?></span>
-                                            </td>
-                                            <td class="small text-muted"><?php echo $is["atanan_personel"]; ?></td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-secondary"><i
-                                                        class="fas fa-print"></i></button>
-                                            </td>
-                                        </tr>
-                                    <?php }
-                                } else { ?>
-                                    <tr>
-                                        <td colspan="6" class="text-center p-4 text-muted">Aktif iş emri bulunmuyor.</td>
-                                    </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+        <!-- SEKMELER -->
+        <ul class="nav nav-tabs" id="planlamaTabs">
+            <li class="nav-item">
+                <button class="nav-link <?php echo $aktif_tab=='haftalik'?'active':''; ?>" data-bs-toggle="tab" data-bs-target="#haftalikPlan" type="button">
+                    <i class="fas fa-calendar-week me-1"></i> Haftalık Plan
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link <?php echo $aktif_tab=='pacal'?'active':''; ?>" data-bs-toggle="tab" data-bs-target="#pacalHazirla" type="button">
+                    <i class="fas fa-blender me-1"></i> Paçal Hazırlama
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link <?php echo $aktif_tab=='recete'?'active':''; ?>" data-bs-toggle="tab" data-bs-target="#receteIsEmri" type="button">
+                    <i class="fas fa-bullhorn me-1"></i> Reçete & İş Emirleri
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <!-- SEKME 1: HAFTALIK PLAN -->
+            <div class="tab-pane fade <?php echo $aktif_tab=='haftalik'?'show active':''; ?>" id="haftalikPlan">
+                <?php include("includes/planlama_haftalik_tab.php"); ?>
+            </div>
+
+            <!-- SEKME 2: PAÇAL HAZIRLAMA -->
+            <div class="tab-pane fade <?php echo $aktif_tab=='pacal'?'show active':''; ?>" id="pacalHazirla">
+                <?php include("includes/planlama_pacal_tab.php"); ?>
+            </div>
+
+            <!-- SEKME 3: REÇETE & İŞ EMİRLERİ -->
+            <div class="tab-pane fade <?php echo $aktif_tab=='recete'?'show active':''; ?>" id="receteIsEmri">
+                <?php include("includes/planlama_recete_tab.php"); ?>
             </div>
         </div>
     </div>
 
+    <!-- REÇETE MODAL -->
     <div class="modal fade" id="yeniReceteModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-dark text-white">
-                    <h5 class="modal-title">Yeni Üretim Reçetesi</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form method="post">
-                        <div class="mb-3">
-                            <label>Reçete Adı</label>
-                            <input type="text" name="recete_adi" class="form-control"
-                                placeholder="Örn: Lüks Ekmeklik Un" required>
-                        </div>
-                        <div class="row">
-                            <div class="col-6 mb-3">
-                                <label>Tav Miktarı (lt)</label>
-                                <input type="number" step="0.1" name="tav_miktar" class="form-control">
-                            </div>
-                            <div class="col-6 mb-3">
-                                <label>Süre (Saat)</label>
-                                <input type="number" name="sure_saat" class="form-control">
-                            </div>
-                            <div class="col-6 mb-3">
-                                <label>Sıcaklık (°C)</label>
-                                <input type="number" step="0.1" name="sicaklik" class="form-control">
-                            </div>
-                            <div class="col-6 mb-3">
-                                <label>Hedef Nem (%)</label>
-                                <input type="number" step="0.1" name="hedef_nem" class="form-control">
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label>Teknik Açıklama / Analiz Spektleri</label>
-                            <textarea name="aciklama" class="form-control" rows="3"></textarea>
-                        </div>
-                        <div class="d-grid">
-                            <button type="submit" name="recete_ekle" class="btn btn-success">Kaydet ve Listeye
-                                Ekle</button>
-                        </div>
-                    </form>
-                </div>
+        <div class="modal-dialog"><div class="modal-content">
+            <div class="modal-header bg-dark text-white"><h5 class="modal-title">Yeni Üretim Reçetesi</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <form method="post">
+                    <div class="mb-3"><label>Reçete Adı</label><input type="text" name="recete_adi" class="form-control" placeholder="Örn: Lüks Ekmeklik Un" required></div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label>Tav Miktarı (lt)</label><input type="number" step="0.1" name="tav_miktar" class="form-control"></div>
+                        <div class="col-6 mb-3"><label>Süre (Saat)</label><input type="number" name="sure_saat" class="form-control"></div>
+                        <div class="col-6 mb-3"><label>Sıcaklık (°C)</label><input type="number" step="0.1" name="sicaklik" class="form-control"></div>
+                        <div class="col-6 mb-3"><label>Hedef Nem (%)</label><input type="number" step="0.1" name="hedef_nem" class="form-control"></div>
+                    </div>
+                    <div class="mb-3"><label>Teknik Açıklama</label><textarea name="aciklama" class="form-control" rows="3"></textarea></div>
+                    <div class="d-grid"><button type="submit" name="recete_ekle" class="btn btn-success">Kaydet</button></div>
+                </form>
             </div>
-        </div>
+        </div></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.all.min.js"></script>
-
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            // SweetAlert2 Alerts
-            <?php if (!empty($mesaj)): ?>
-                Swal.fire({
-                    toast: true,
-                    position: 'top-end',
-                    icon: 'success',
-                    title: '<?php echo addslashes(str_replace(["✅ ", "✓ "], "", strip_tags($mesaj))); ?>',
-                    showConfirmButton: false,
-                    showCloseButton: true,
-                    timer: 5000,
-                    timerProgressBar: true,
-                    didOpen: (toast) => {
-                        toast.addEventListener('mouseenter', Swal.stopTimer)
-                        toast.addEventListener('mouseleave', Swal.resumeTimer)
+    document.addEventListener('DOMContentLoaded', function() {
+        <?php if (!empty($mesaj)): ?>
+        Swal.fire({ toast:true, position:'top-end', icon:'success', title:'<?php echo addslashes(strip_tags($mesaj)); ?>', showConfirmButton:false, showCloseButton:true, timer:5000, timerProgressBar:true });
+        <?php endif; ?>
+        <?php if (!empty($hata)): ?>
+        Swal.fire({ icon:'error', title:'Hata!', text:'<?php echo addslashes(strip_tags($hata)); ?>', confirmButtonColor:'#0f172a' });
+        <?php endif; ?>
+
+        // Silme onayı
+        document.querySelectorAll('.sil-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                Swal.fire({ title:'Emin misiniz?', text:'Bu kayıt silinecek!', icon:'warning', showCancelButton:true, confirmButtonColor:'#dc3545', cancelButtonText:'Vazgeç', confirmButtonText:'Sil!' }).then(r => { if(r.isConfirmed) window.location.href = this.getAttribute('href'); });
+            });
+        });
+    });
+
+    // ============ PAÇAL JS ============
+    let kodSayac = {};
+
+    function siloSecildi(selectEl, row) {
+        const opt = selectEl.options[selectEl.selectedIndex];
+        const siloId = selectEl.value;
+        const hammaddeAdi = opt?.dataset?.hammadde || '';
+        const hammaddeKodu = opt?.dataset?.kod || '';
+        const hid = opt?.dataset?.hid || '';
+
+        document.querySelector(`.bugday-cinsi[data-row="${row}"]`).value = hammaddeAdi;
+        document.querySelector(`.hammadde-id-hidden[data-row="${row}"]`).value = hid;
+
+        if (hammaddeKodu) {
+            if (!kodSayac[hammaddeKodu]) kodSayac[hammaddeKodu] = 1000;
+            kodSayac[hammaddeKodu]++;
+            document.querySelector(`.kod-field[data-row="${row}"]`).value = hammaddeKodu + '-' + kodSayac[hammaddeKodu];
+        } else {
+            document.querySelector(`.kod-field[data-row="${row}"]`).value = '';
+        }
+
+        // Lab verilerini çek
+        if (hid) {
+            fetch(`ajax/ajax_lab_verileri.php?hammadde_kodu=${encodeURIComponent(hid)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        const d = data.data;
+                        ['gluten','g_index','n_sedim','g_sedim','hektolitre','nem','fn',
+                         'perten_protein','perten_sertlik','perten_nisasta'].forEach(col => {
+                            const el = document.querySelector(`.lab-val[data-row="${row}"][data-col="${col}"]`);
+                            if (el) el.value = d[col] || '';
+                        });
+                        hesaplaOrtalama();
                     }
-                });
-            <?php endif; ?>
+                }).catch(err => console.error('Lab verisi hatası:', err));
+        } else {
+            document.querySelectorAll(`.lab-val[data-row="${row}"]`).forEach(f => f.value = '');
+            hesaplaOrtalama();
+        }
+    }
 
-            <?php if (!empty($hata)): ?>
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Hata!',
-                    text: '<?php echo addslashes(str_replace(["❌ ", "✖ ", "HATA: "], "", strip_tags($hata))); ?>',
-                    confirmButtonColor: '#0f172a'
-                });
-            <?php endif; ?>
+    function hesaplaOrtalama() {
+        const kolonlar = [
+            {col:'gluten',id:'avgGluten',dec:2},{col:'g_index',id:'avgGIndex',dec:0},
+            {col:'n_sedim',id:'avgNSedim',dec:0},{col:'g_sedim',id:'avgGSedim',dec:0},
+            {col:'hektolitre',id:'avgHektolitre',dec:2},{col:'nem',id:'avgNem',dec:2},
+            {col:'alveo_p',id:'avgAlveoP',dec:2},{col:'alveo_g',id:'avgAlveoG',dec:2},
+            {col:'alveo_pl',id:'avgAlveoPL',dec:2},{col:'alveo_w',id:'avgAlveoW',dec:0},
+            {col:'alveo_ie',id:'avgAlveoIE',dec:2},{col:'fn',id:'avgFN',dec:0},
+            {col:'perten_protein',id:'avgProtein',dec:2},{col:'perten_sertlik',id:'avgSertlik',dec:2},
+            {col:'perten_nisasta',id:'avgNisasta',dec:2}
+        ];
+        let toplamMiktar=0, toplamOran=0;
+        for(let r=1;r<=7;r++){
+            toplamOran += parseFloat(document.querySelector(`.oran-field[data-row="${r}"]`)?.value)||0;
+            toplamMiktar += parseFloat(document.querySelector(`.miktar-field[data-row="${r}"]`)?.value)||0;
+        }
+        const el1 = document.getElementById('avgMiktar');
+        const el2 = document.getElementById('avgOranToplam');
+        if(el1) el1.innerText = toplamMiktar.toLocaleString('tr-TR');
+        if(el2) el2.innerText = toplamOran.toFixed(2);
 
-            const container = document.getElementById('siloKarisimContainer');
-            const btnEkle = document.getElementById('btnSiloEkle');
-            const toplamSpan = document.getElementById('toplamYuzde');
-            const uyariSpan = document.getElementById('yuzdeUyari');
+        kolonlar.forEach(({col,id,dec}) => {
+            let toplam=0, hasVal=false;
+            for(let r=1;r<=7;r++){
+                const oran = parseFloat(document.querySelector(`.oran-field[data-row="${r}"]`)?.value)||0;
+                if(oran<=0) continue;
+                const valEl = document.querySelector(`.lab-val[data-row="${r}"][data-col="${col}"]`)
+                    || document.querySelector(`.alveo-val[data-row="${r}"][data-col="${col}"]`);
+                const val = parseFloat(valEl?.value)||0;
+                if(val>0){ toplam += val*oran; hasVal=true; }
+            }
+            const avgEl = document.getElementById(id);
+            if(avgEl) avgEl.innerText = (hasVal && toplamOran>0) ? (toplam/toplamOran).toFixed(dec) : '-';
+        });
+    }
 
-            // Silo seçenekleri template
-            const siloOptions = `<?php
+    // Paçal form validasyonu
+    const pf = document.getElementById('pacalForm');
+    if(pf) pf.addEventListener('submit', function(e) {
+        let topO=0;
+        for(let r=1;r<=7;r++) topO += parseFloat(document.querySelector(`.oran-field[data-row="${r}"]`)?.value)||0;
+        if(topO>0 && Math.abs(topO-100)>0.05){
+            e.preventDefault();
+            Swal.fire({icon:'error',title:'Hata!',text:'Paçal oranları toplamı 100 olmalı! (Şu an: '+topO.toFixed(2)+')',confirmButtonColor:'#0f172a'});
+        }
+    });
+
+    // ============ İŞ EMRİ SILO JS ============
+    const siloContainer = document.getElementById('siloKarisimContainer');
+    const btnSiloEkle = document.getElementById('btnSiloEkle');
+    if (siloContainer && btnSiloEkle) {
+        const siloOpts = `<?php
             $opts = '<option value="">Silo Seç...</option>';
             foreach ($bugday_silolari_arr as $s) {
-                $doluluk = round(($s['doluluk_m3'] / $s['kapasite_m3']) * 100);
-                $opts .= '<option value="' . $s['id'] . '">' . $s['silo_adi'] . ' (' . $doluluk . '% dolu)</option>';
+                $dol = ($s['kapasite_m3']>0)?round(($s['doluluk_m3']/$s['kapasite_m3'])*100):0;
+                $opts .= '<option value="'.$s['id'].'">'.$s['silo_adi'].' ('.$dol.'% dolu)</option>';
             }
             echo addslashes($opts);
-            ?>`;
-
-            // Yeni silo satırı ekle
-            btnEkle.addEventListener('click', function () {
-                const row = document.createElement('div');
-                row.className = 'silo-row d-flex align-items-center gap-2 mb-2';
-                row.innerHTML = `
-                <select name="silo_id[]" class="form-select silo-select" style="width: 60%;">
-                    ${siloOptions}
-                </select>
-                <input type="number" name="silo_yuzde[]" class="form-control silo-yuzde" 
-                       placeholder="%" min="0" max="100" step="0.1" style="width: 80px;">
+        ?>`;
+        btnSiloEkle.addEventListener('click', function() {
+            const row = document.createElement('div');
+            row.className = 'silo-row d-flex align-items-center gap-2 mb-2';
+            row.innerHTML = `<select name="silo_id[]" class="form-select" style="width:60%">${siloOpts}</select>
+                <input type="number" name="silo_yuzde[]" class="form-control silo-yuzde" placeholder="%" min="0" max="100" step="0.1" style="width:80px">
                 <span class="text-muted">%</span>
-                <button type="button" class="btn btn-outline-danger btn-sm btn-silo-sil">
-                    <i class="fas fa-times"></i>
-                </button>
-            `;
-                container.appendChild(row);
-                updateSilButtons();
-                hesaplaToplamYuzde();
-            });
-
-            // Silo silme
-            container.addEventListener('click', function (e) {
-                if (e.target.closest('.btn-silo-sil')) {
-                    const rows = container.querySelectorAll('.silo-row');
-                    if (rows.length > 1) {
-                        e.target.closest('.silo-row').remove();
-                        updateSilButtons();
-                        hesaplaToplamYuzde();
-                    }
-                }
-            });
-
-            // Yüzde hesaplama ve silo seçim kontrolü
-            container.addEventListener('input', function (e) {
-                if (e.target.classList.contains('silo-yuzde')) {
-                    // Maksimum 100 kontrolü
-                    let val = parseFloat(e.target.value) || 0;
-                    if (val > 100) {
-                        e.target.value = 100;
-                    }
-                    if (val < 0) {
-                        e.target.value = 0;
-                    }
-                    hesaplaToplamYuzde();
-                }
-            });
-
-            // Silo seçildiğinde diğer dropdownlardan kaldır
-            container.addEventListener('change', function (e) {
-                if (e.target.classList.contains('silo-select')) {
-                    updateSeciliSilolar();
-                }
-            });
-
-            function updateSeciliSilolar() {
-                // Tüm seçili siloları topla
-                const siloSelects = container.querySelectorAll('.silo-select');
-                const seciliDegerler = [];
-                siloSelects.forEach(sel => {
-                    if (sel.value) {
-                        seciliDegerler.push(sel.value);
-                    }
-                });
-
-                // Her dropdown için seçenekleri güncelle
-                siloSelects.forEach(sel => {
-                    const mevcutDeger = sel.value;
-                    const options = sel.querySelectorAll('option');
-                    options.forEach(opt => {
-                        if (opt.value && opt.value !== mevcutDeger) {
-                            // Bu seçenek başka bir dropdown'da seçiliyse devre dışı bırak
-                            opt.disabled = seciliDegerler.includes(opt.value);
-                        }
-                    });
-                });
-            }
-
-            function updateSilButtons() {
-                const rows = container.querySelectorAll('.silo-row');
-                const silButtons = container.querySelectorAll('.btn-silo-sil');
-                silButtons.forEach(btn => {
-                    btn.disabled = rows.length <= 1;
-                });
-                updateSeciliSilolar();
-            }
-
-            function hesaplaToplamYuzde() {
-                const yuzdeInputs = container.querySelectorAll('.silo-yuzde');
-                let toplam = 0;
-                yuzdeInputs.forEach(input => {
-                    toplam += parseFloat(input.value) || 0;
-                });
-                toplamSpan.textContent = toplam.toFixed(1);
-
-                if (Math.abs(toplam - 100) > 0.1) {
-                    uyariSpan.classList.remove('d-none');
-                    toplamSpan.classList.add('text-danger');
-                    toplamSpan.classList.remove('text-success');
-                } else {
-                    uyariSpan.classList.add('d-none');
-                    toplamSpan.classList.remove('text-danger');
-                    toplamSpan.classList.add('text-success');
-                }
-            }
-
-            // Form submit validasyonu
-            document.querySelector('form').addEventListener('submit', function (e) {
-                // Sadece is_emri_ver formu için
-                if (!e.target.querySelector('[name="is_emri_ver"]')) return;
-
-                const yuzdeInputs = container.querySelectorAll('.silo-yuzde');
-                const siloSelects = container.querySelectorAll('.silo-select');
-                let toplam = 0;
-                let seciliSilolar = [];
-                let hataMesaji = '';
-
-                yuzdeInputs.forEach((input, index) => {
-                    const yuzde = parseFloat(input.value) || 0;
-                    const siloId = siloSelects[index].value;
-
-                    if (siloId && yuzde > 0) {
-                        toplam += yuzde;
-                        if (seciliSilolar.includes(siloId)) {
-                            hataMesaji = 'Aynı silo birden fazla kez seçilemez!';
-                        }
-                        seciliSilolar.push(siloId);
-                    }
-                });
-
-                if (seciliSilolar.length === 0) {
-                    hataMesaji = 'En az bir silo seçmelisiniz!';
-                } else if (Math.abs(toplam - 100) > 0.1) {
-                    hataMesaji = 'Silo yüzdelerinin toplamı %100 olmalı! (Şu an: %' + toplam.toFixed(1) + ')';
-                }
-
-                if (hataMesaji) {
-                    e.preventDefault();
-                    Swal.fire({
-                        icon: 'warning',
-                        title: 'Eksik / Hatalı Karışım',
-                        text: hataMesaji,
-                        confirmButtonText: 'Tamam'
-                    });
-                }
-            });
-
-            hesaplaToplamYuzde();
+                <button type="button" class="btn btn-outline-danger btn-sm btn-silo-sil"><i class="fas fa-times"></i></button>`;
+            siloContainer.appendChild(row);
         });
+        siloContainer.addEventListener('click', function(e) {
+            if (e.target.closest('.btn-silo-sil')) {
+                const rows = siloContainer.querySelectorAll('.silo-row');
+                if (rows.length > 1) e.target.closest('.silo-row').remove();
+            }
+        });
+        siloContainer.addEventListener('input', function(e) {
+            if (e.target.classList.contains('silo-yuzde')) {
+                let t=0;
+                siloContainer.querySelectorAll('.silo-yuzde').forEach(i => t += parseFloat(i.value)||0);
+                const sp = document.getElementById('toplamYuzde');
+                const uy = document.getElementById('yuzdeUyari');
+                if(sp) sp.textContent = t.toFixed(1);
+                if(uy) { if(Math.abs(t-100)>0.1){uy.classList.remove('d-none');sp.classList.add('text-danger')}else{uy.classList.add('d-none');sp.classList.remove('text-danger');sp.classList.add('text-success')} }
+            }
+        });
+    }
     </script>
-
     <?php echo yazmaYetkisiKontrolJS($baglanti); ?>
 </body>
-
 </html>
