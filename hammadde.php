@@ -1384,22 +1384,14 @@ if ($duzeltme_tablo_var) {
                                                     ?>
                                                     <div class="d-flex justify-content-center gap-1">
                                                         <button type="button" class="btn btn-sm <?php echo $buton_sinifi; ?>" <?php echo $modal_aksiyon_aktif ? 'data-bs-toggle="modal" data-bs-target="#kantarModal"' : ''; ?>
-                                                            data-id="
-                                                <?php echo $row['id']; ?>"
-                                                            data-plaka="
-                                                <?php echo htmlspecialchars($row['arac_plaka']); ?>"
-                                                            data-tedarikci="
-                                                <?php echo htmlspecialchars($row['tedarikci'] ?? ''); ?>"
-                                                            data-referans-kg="
-                                                <?php echo (float) ($row['referans_kantar_kg'] ?? 0); ?>"
-                                                            data-hammadde-kodu="
-                                                <?php echo htmlspecialchars($row['hammadde_kodu'] ?? '', ENT_QUOTES); ?>"
-                                                            data-yogunluk="
-                                                <?php echo (float) ($row['hammadde_yogunluk'] ?? 780); ?>"
-                                                            data-patron-duzeltme="
-                                                <?php echo $patron_direkt_duzeltme ? '1' : '0'; ?>"
-                                                            title="
-                                                <?php echo $buton_title; ?>">
+                                                            data-id="<?php echo (int) ($row['id'] ?? 0); ?>"
+                                                            data-plaka="<?php echo htmlspecialchars((string) ($row['arac_plaka'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-tedarikci="<?php echo htmlspecialchars((string) ($row['tedarikci'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-referans-kg="<?php echo (float) ($row['referans_kantar_kg'] ?? 0); ?>"
+                                                            data-hammadde-kodu="<?php echo htmlspecialchars((string) ($row['hammadde_kodu'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-yogunluk="<?php echo (float) ($row['hammadde_yogunluk'] ?? 780); ?>"
+                                                            data-patron-duzeltme="<?php echo $patron_direkt_duzeltme ? '1' : '0'; ?>"
+                                                            title="<?php echo htmlspecialchars((string) $buton_title, ENT_QUOTES, 'UTF-8'); ?>">
                                                             <i class="fas <?php echo $buton_icon; ?>"></i>
                                                             <?php if ($buton_metin !== ''): ?>
                                                                 <small class="ms-1">
@@ -1913,11 +1905,11 @@ if ($duzeltme_tablo_var) {
                     if (!button) {
                         return;
                     }
-                    var id = button.getAttribute('data-id');
-                    var plaka = button.getAttribute('data-plaka');
-                    var tedarikci = button.getAttribute('data-tedarikci');
+                    var id = (button.getAttribute('data-id') || '').trim();
+                    var plaka = (button.getAttribute('data-plaka') || '').trim();
+                    var tedarikci = (button.getAttribute('data-tedarikci') || '').trim();
                     var referansKg = parseSafeFloat(button.getAttribute('data-referans-kg') || '0');
-                    var hammaddeKodu = button.getAttribute('data-hammadde-kodu') || '';
+                    var hammaddeKodu = (button.getAttribute('data-hammadde-kodu') || '').trim();
                     var yogunluk = parseSafeFloat(button.getAttribute('data-yogunluk') || '780');
                     var patronDuzeltme = button.getAttribute('data-patron-duzeltme') === '1' ? '1' : '0';
 
