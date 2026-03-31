@@ -760,7 +760,7 @@ if ($can_onay) {
                 <?php if (navbarModulGoster($baglanti, 'Satın Alma')) { ?>
                     <a href="satin_alma.php" class="nav-link <?php if ($sayfa == 'satin_alma.php')
                         echo 'active'; ?>">
-                        <i class="fas fa-shopping-cart"></i> Satın Alma
+                        <i class="fas fa-shopping-cart"></i> Kantar & Muhasebe
                     </a>
                 <?php } ?>
                 <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
@@ -941,7 +941,7 @@ if ($can_onay) {
         <?php if (navbarModulGoster($baglanti, 'Satın Alma')) { ?>
             <a href="satin_alma.php" class="menu-item <?php if ($sayfa == 'satin_alma.php')
                 echo 'active'; ?>">
-                <i class="fas fa-shopping-cart"></i> Satın Alma
+                <i class="fas fa-shopping-cart"></i> Kantar & Muhasebe
             </a>
         <?php } ?>
         <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
