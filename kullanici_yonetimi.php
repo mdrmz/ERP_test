@@ -801,7 +801,7 @@ $roller = $baglanti->query("SELECT * FROM kullanici_rolleri ORDER BY id");
                                 'Lojistik' => [
                                     'ikon' => 'fa-boxes-stacked',
                                     'moduller' => [
-                                        ['db_adi' => 'Satın Alma', 'gorunen_adi' => 'Satın Alma', 'ikon' => 'fa-shopping-cart'],
+                                        ['db_adi' => 'Satın Alma', 'gorunen_adi' => 'Kantar & Muhasebe', 'ikon' => 'fa-shopping-cart'],
                                         ['db_adi' => 'Sevkiyat & Lojistik', 'gorunen_adi' => 'Depo & Sevk', 'ikon' => 'fa-boxes-stacked'],
                                         ['db_adi' => 'Stok Takibi', 'gorunen_adi' => 'Malzeme Stok', 'ikon' => 'fa-cubes']
                                     ]
@@ -1271,7 +1271,7 @@ $roller = $baglanti->query("SELECT * FROM kullanici_rolleri ORDER BY id");
                                     'ikon' => 'fa-boxes-stacked',
                                     'renk' => '#10b981',
                                     'moduller' => [
-                                        ['db_adi' => 'Satın Alma', 'gorunen_adi' => 'Satın Alma', 'ikon' => 'fa-shopping-cart'],
+                                        ['db_adi' => 'Satın Alma', 'gorunen_adi' => 'Kantar & Muhasebe', 'ikon' => 'fa-shopping-cart'],
                                         ['db_adi' => 'Sevkiyat & Lojistik', 'gorunen_adi' => 'Depo & Sevk', 'ikon' => 'fa-boxes-stacked'],
                                         ['db_adi' => 'Stok Takibi', 'gorunen_adi' => 'Malzeme Stok', 'ikon' => 'fa-cubes'],
                                     ]

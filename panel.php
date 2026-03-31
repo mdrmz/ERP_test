@@ -103,7 +103,7 @@ $panel_basliklar = [
     'admin' => ['başlık' => 'Yönetim Paneli', 'açıklama' => 'Tüm fabrika anlık durum özeti'],
     'uretim' => ['başlık' => 'Üretim Paneli', 'açıklama' => 'Üretim ve planlama durumu'],
     'depo' => ['başlık' => 'Depo & Sevkiyat Paneli', 'açıklama' => 'Sevkiyat ve yükleme programı'],
-    'satin_alma' => ['başlık' => 'Satın Alma Paneli', 'açıklama' => 'Tedarik ve stok durumu'],
+    'satin_alma' => ['başlık' => 'Kantar & Muhasebe Paneli', 'açıklama' => 'Kantar ve muhasebe süreç durumu'],
     'lab' => ['başlık' => 'Laboratuvar Paneli', 'açıklama' => 'Analiz ve kalite kontrol'],
     'personel' => ['başlık' => 'Hoş Geldiniz', 'açıklama' => 'Menüden yetkili modüllere erişebilirsiniz'],
 ];
@@ -605,7 +605,7 @@ $aciklama = $panel_basliklar[$yetki]['açıklama'] ?? '';
                                 <div class="col-md-6">
                                     <a href="satin_alma.php" class="quick-link text-decoration-none">
                                         <i class="fas fa-shopping-cart bg-info text-white p-2 rounded"></i>
-                                        <span class="fw-semibold">Satın Alma</span>
+                                        <span class="fw-semibold">Kantar & Muhasebe</span>
                                         <i class="fas fa-chevron-right ms-auto text-muted"></i>
                                     </a>
                                 </div>
