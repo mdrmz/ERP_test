@@ -95,6 +95,7 @@ if (isset($_POST['silo_ekle'])) {
     $adi = $baglanti->real_escape_string($_POST['silo_adi'] ?? '');
     $tip = $baglanti->real_escape_string($_POST['tip'] ?? 'bugday');
     $kapasite = (float) ($_POST['kapasite_m3'] ?? 0);
+    $plc_ip = $baglanti->real_escape_string($_POST['plc_ip_adresi'] ?? '');
     $izinli_kodlar = normalizeKodList($_POST['yeni_izinli_kodlar'] ?? []);
 
     if ($kapasite <= 0)
@@ -112,8 +113,8 @@ if (isset($_POST['silo_ekle'])) {
             $izinli_sql = "'$izinli_json'";
         }
 
-        $sql = "INSERT INTO silolar (silo_adi, tip, kapasite_m3, durum, doluluk_m3, aktif_hammadde_kodu, izin_verilen_hammadde_kodlari) 
-                VALUES ('$adi', '$tip', $kapasite, 'aktif', 0, NULL, $izinli_sql)";
+        $sql = "INSERT INTO silolar (silo_adi, tip, kapasite_m3, durum, doluluk_m3, aktif_hammadde_kodu, izin_verilen_hammadde_kodlari, plc_ip_adresi) 
+                VALUES ('$adi', '$tip', $kapasite, 'aktif', 0, NULL, $izinli_sql, " . ($plc_ip === "" ? "NULL" : "'$plc_ip'") . ")";
 
         if ($baglanti->query($sql)) {
             $mesaj = "✅ Silo eklendi: $adi";
@@ -140,7 +141,9 @@ if (isset($_POST['silo_guncelle'])) {
     $id = (int) ($_POST['silo_id'] ?? 0);
     $adi = $baglanti->real_escape_string($_POST['silo_adi'] ?? '');
     $kapasite = (float) ($_POST['kapasite_m3'] ?? 0);
+    $plc_ip = $baglanti->real_escape_string($_POST['plc_ip_adresi'] ?? '');
     $durum = $baglanti->real_escape_string($_POST['durum'] ?? 'aktif');
+    $plc_ip = $baglanti->real_escape_string($_POST['plc_ip_adresi'] ?? '');
     $durum_izinli = ['aktif', 'bakim', 'temizlik'];
     if (!in_array($durum, $durum_izinli, true)) {
         $durum = 'aktif';
@@ -181,7 +184,8 @@ if (isset($_POST['silo_guncelle'])) {
                 kapasite_m3=$kapasite, 
                 durum='$durum',
                 aktif_hammadde_kodu=$aktif_kod_sql, 
-                izin_verilen_hammadde_kodlari=$izinli_sql
+                izin_verilen_hammadde_kodlari=$izinli_sql,
+                plc_ip_adresi=" . ($plc_ip === "" ? "NULL" : "'$plc_ip'") . "
                 WHERE id=$id";
 
         if ($baglanti->query($sql)) {
@@ -581,6 +585,8 @@ if ($karisim_result) {
                                     <small><strong>Sadece Bunlar Girebilir:</strong> $izinli_metin</small>
                                 </div>
 
+                                " . (!empty($row['plc_ip_adresi']) ? "<div class='alert alert-info py-1 px-2 mb-2 text-center border'><small><i class='fas fa-network-wired'></i> PLC: {$row['plc_ip_adresi']}</small></div>" : "") . "
+
                                 <div class='border rounded p-2 mb-2 bg-light-subtle'>
                                     <div class='small fw-semibold text-muted mb-1'>Silo Karisimi (kalan kg / oran)</div>
                                     $karisim_html
@@ -639,6 +645,10 @@ if ($karisim_result) {
                         <div class="col-12"><label>Kapasite (m&sup3;)</label><input type="number" step="0.1"
                                 name="kapasite_m3" class="form-control" required></div>
                     </div>
+                    <div class="row mb-3 mt-2">
+                        <div class="col-12"><label>PLC IP Adresi (Opsiyonel)</label><input type="text"
+                                name="plc_ip_adresi" class="form-control" placeholder="Örn: 192.168.20.51"></div>
+                    </div>
                     <div class="mb-2">
                         <label>Sadece Bunlar Girebilir (istege bagli):</label>
                         <div class="border rounded p-2 bg-light" style="height:140px; overflow-y:auto;">
@@ -685,6 +695,9 @@ if ($karisim_result) {
                                     <option value="bakim">Bakım</option>
                                     <option value="temizlik">Temizlik</option>
                                 </select>
+                            </div>
+                            <div class="mb-3"><label>PLC IP Adresi</label><input type="text" name="plc_ip_adresi" id="edit_plc_ip"
+                                    class="form-control" placeholder="192.168.20.x">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -854,6 +867,7 @@ if ($karisim_result) {
             document.getElementById('edit_kapasite').value = data.kapasite_m3 || '';
             document.getElementById('edit_durum').value = data.durum || 'aktif';
             document.getElementById('edit_aktif_kod').value = data.aktif_hammadde_kodu || '';
+            document.getElementById('edit_plc_ip').value = data.plc_ip_adresi || '';
 
             document.querySelectorAll('.izinli-check').forEach(cb => cb.checked = false);
             if (data.izin_verilen_hammadde_kodlari) {

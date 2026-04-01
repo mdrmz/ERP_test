@@ -685,7 +685,79 @@ if (isset($_POST["giris_yap"])) {
     }
 }
 
+// FORM GÖNDERİLDİĞİNDE (KAMYON GİRİŞİ DÜZENLEME)
+if (isset($_POST["giris_duzenle"])) {
+    $giris_id = (int) $_POST["duzenle_giris_id"];
+    $hammadde_id = (int) $_POST["hammadde_id"];
+    $plaka = $baglanti->real_escape_string(trim(strtoupper($_POST["plaka"])));
+    $tedarikci = $baglanti->real_escape_string(trim($_POST["tedarikci"]));
+    $parti_no = $baglanti->real_escape_string(trim($_POST["parti_no"]));
 
+    if ($giris_id > 0) {
+        $kontrol_sql = "SELECT id, arac_plaka, hammadde_id, parti_no, tedarikci, miktar_kg, giris_m3 FROM hammadde_girisleri WHERE id = $giris_id LIMIT 1";
+        $kontrol_res = $baglanti->query($kontrol_sql);
+        if ($kontrol_res && $kontrol_res->num_rows > 0) {
+            $mevcut = $kontrol_res->fetch_assoc();
+            // Duplicate partino kontrolu
+            $parti_kontrol = true;
+            if ($mevcut['parti_no'] !== $parti_no) {
+                $pk_res = $baglanti->query("SELECT id FROM hammadde_girisleri WHERE parti_no = '$parti_no'");
+                if ($pk_res && $pk_res->num_rows > 0) {
+                    $hata = "❌ Bu parti numarası zaten kullanılmış: <strong>$parti_no</strong>";
+                    $parti_kontrol = false;
+                }
+            }
+
+            if ($parti_kontrol) {
+                // Yoguluk hesapla ve m3 guncelle
+                $yeni_m3 = (float) ($mevcut['giris_m3'] ?? 0);
+                $yogunluk_kg_m3 = 780;
+                $urun_bilgi_res = $baglanti->query("SELECT yogunluk_kg_m3 FROM hammaddeler WHERE id=$hammadde_id");
+                if ($urun_bilgi_res && $urun_bilgi_res->num_rows > 0) {
+                    $u_bilgi = $urun_bilgi_res->fetch_assoc();
+                    $yogunluk_kg_m3 = !empty($u_bilgi["yogunluk_kg_m3"]) ? (float) $u_bilgi["yogunluk_kg_m3"] : 780;
+                }
+                if ($yogunluk_kg_m3 <= 0)
+                    $yogunluk_kg_m3 = 780;
+
+                $mkg = (float) ($mevcut['miktar_kg'] ?? 0);
+                if ($mkg > 0) {
+                    $yeni_m3 = $mkg / $yogunluk_kg_m3;
+                }
+
+                $duzenle_sql = "UPDATE hammadde_girisleri SET 
+                                hammadde_id = $hammadde_id, 
+                                arac_plaka = '$plaka', 
+                                parti_no = '$parti_no', 
+                                tedarikci = '$tedarikci',
+                                giris_m3 = $yeni_m3
+                                WHERE id = $giris_id";
+                if ($baglanti->query($duzenle_sql)) {
+                    $mesaj = "✅ Giriş kaydı başarıyla güncellendi.";
+                    if (function_exists('systemLogKaydet')) {
+                        systemLogKaydet(
+                            $baglanti,
+                            'UPDATE',
+                            'Hammadde Kabul Düzenleme',
+                            "Kayıt güncellendi ID: $giris_id | Plaka: {$plaka} | Tedarikçi: {$tedarikci} | Parti: {$parti_no}"
+                        );
+                    }
+                    header("Location: hammadde.php?msg=ok_duzenle");
+                    exit;
+                } else {
+                    $hata = "Güncelleme hatası: " . $baglanti->error;
+                }
+            }
+        } else {
+            $hata = "Kayıt bulunamadı!";
+        }
+    } else {
+        $hata = "Geçersiz giriş ID!";
+    }
+}
+if (isset($_GET['msg']) && $_GET['msg'] == 'ok_duzenle') {
+    $mesaj = "✅ Giriş kaydı başarıyla güncellendi.";
+}
 
 // LİSTELERİ ÇEK
 $silolar = $baglanti->query("SELECT * FROM silolar");
@@ -1096,8 +1168,7 @@ if ($duzeltme_tablo_var) {
                                                 <?php while ($h = $hammaddeler->fetch_assoc()) {
                                                     $selected = (isset($_POST['hammadde_id']) && $_POST['hammadde_id'] == $h['id']) ? 'selected' : '';
                                                     ?>
-                                                    <option value="<?php echo $h["id"]; ?>"
-                                                        <?php echo $selected; ?>>
+                                                    <option value="<?php echo $h["id"]; ?>" <?php echo $selected; ?>>
                                                         <?php echo $h["hammadde_kodu"] . " - " . $h["ad"]; ?>
                                                     </option>
                                                 <?php } ?>
@@ -1399,6 +1470,19 @@ if ($duzeltme_tablo_var) {
                                                                 </small>
                                                             <?php endif; ?>
                                                         </button>
+
+                                                        <?php if (!$is_locked): ?>
+                                                            <button type="button" class="btn btn-sm btn-outline-info"
+                                                                data-bs-toggle="modal" data-bs-target="#girisDuzenleModal"
+                                                                data-giris-id="<?php echo (int) ($row['id'] ?? 0); ?>"
+                                                                data-hammadde-id="<?php echo (int) ($row['hammadde_id'] ?? 0); ?>"
+                                                                data-plaka="<?php echo htmlspecialchars((string) ($row['arac_plaka'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                                                data-tedarikci="<?php echo htmlspecialchars((string) ($row['tedarikci'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                                                data-parti-no="<?php echo htmlspecialchars((string) ($row['parti_no'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                                                title="Giriş Bölümünü Düzenle">
+                                                                <i class="fas fa-edit"></i>
+                                                            </button>
+                                                        <?php endif; ?>
 
                                                         <?php if ($is_locked && !$is_patron && !$onayli_talep_ile_duzeltme && $duzeltme_tablo_var): ?>
                                                             <button type="button" class="btn btn-sm btn-outline-danger"
@@ -1793,6 +1877,56 @@ if ($duzeltme_tablo_var) {
         }
     </script>
 
+    <!-- Giriş Düzenle Modal -->
+    <div class="modal fade" id="girisDuzenleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Hammadde Girişi Düzenle</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form method="post">
+                        <input type="hidden" name="duzenle_giris_id" id="modal_duzenle_giris_id">
+                        <div class="mb-3">
+                            <label class="form-label required-field">Hammadde Cinsi</label>
+                            <select name="hammadde_id" id="modal_duzenle_hammadde_id" class="form-select" required>
+                                <option value="">Seçiniz...</option>
+                                <?php
+                                $hammaddeler->data_seek(0);
+                                while ($h = $hammaddeler->fetch_assoc()) {
+                                    echo "<option value='{$h["id"]}'>{$h["hammadde_kodu"]} - {$h["ad"]}</option>";
+                                }
+                                $hammaddeler->data_seek(0);
+                                ?>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label required-field">Parti No</label>
+                            <input type="text" name="parti_no" id="modal_duzenle_parti_no" class="form-control"
+                                required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label required-field">Tedarikçi</label>
+                            <input type="text" name="tedarikci" id="modal_duzenle_tedarikci" class="form-control"
+                                required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label required-field">Araç Plaka</label>
+                            <input type="text" name="plaka" id="modal_duzenle_plaka" class="form-control" required
+                                oninput="this.value = this.value.toUpperCase()" style="text-transform: uppercase;">
+                        </div>
+                        <div class="d-grid mt-4">
+                            <button type="submit" name="giris_duzenle" class="btn btn-info text-white fw-bold">
+                                <i class="fas fa-save me-2"></i>Değişiklikleri Kaydet
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Yeni Hammadde Modal -->
     <div class="modal fade" id="yeniHammaddeModal" tabindex="-1">
         <div class="modal-dialog">
@@ -1841,29 +1975,29 @@ if ($duzeltme_tablo_var) {
         $(document).ready(function () {
             // SweetAlert2 Alerts
             <?php if (!empty($mesaj)): ?>
-                    Swal.fire({
-                        toast: true,
-                        position: 'top-end',
-                        icon: 'success',
-                        title: '<?php echo addslashes(str_replace(["✅ ", "✓ "], "", $mesaj)); ?>',
-                        showConfirmButton: false,
-                        showCloseButton: true,
-                        timer: 5000,
-                        timerProgressBar: true,
-                        didOpen: (toast) => {
-                            toast.addEventListener('mouseenter', Swal.stopTimer)
-                            toast.addEventListener('mouseleave', Swal.resumeTimer)
-                        }
-                    });
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'success',
+                    title: '<?php echo addslashes(str_replace(["✅ ", "✓ "], "", $mesaj)); ?>',
+                    showConfirmButton: false,
+                    showCloseButton: true,
+                    timer: 5000,
+                    timerProgressBar: true,
+                    didOpen: (toast) => {
+                        toast.addEventListener('mouseenter', Swal.stopTimer)
+                        toast.addEventListener('mouseleave', Swal.resumeTimer)
+                    }
+                });
             <?php endif; ?>
 
             <?php if (!empty($hata)): ?>
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Hata!',
-                        text: '<?php echo addslashes(str_replace(["❌ ", "✖ ", "HATA: "], "", $hata)); ?>',
-                        confirmButtonColor: '#0f172a'
-                    });
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Hata!',
+                    text: '<?php echo addslashes(str_replace(["❌ ", "✖ ", "HATA: "], "", $hata)); ?>',
+                    confirmButtonColor: '#0f172a'
+                });
             <?php endif; ?>
 
             if ($('#gecmisTablo').length) {
@@ -1967,8 +2101,53 @@ if ($duzeltme_tablo_var) {
                 dagitimForm.addEventListener('submit', dagitimFormKontrol);
             }
 
+            var girisDuzenleModal = document.getElementById('girisDuzenleModal');
+            var originalHammaddeId = null;
+            var originalPartiNo = null;
+
+            if (girisDuzenleModal) {
+                girisDuzenleModal.addEventListener('show.bs.modal', function (event) {
+                    var button = event.relatedTarget;
+                    var girisId = button.getAttribute('data-giris-id');
+                    var hammaddeId = button.getAttribute('data-hammadde-id');
+                    var plaka = button.getAttribute('data-plaka');
+                    var tedarikci = button.getAttribute('data-tedarikci');
+                    var partiNo = button.getAttribute('data-parti-no');
+
+                    originalHammaddeId = hammaddeId;
+                    originalPartiNo = partiNo;
+
+                    document.getElementById('modal_duzenle_giris_id').value = girisId;
+                    document.getElementById('modal_duzenle_hammadde_id').value = hammaddeId;
+                    document.getElementById('modal_duzenle_plaka').value = plaka;
+                    document.getElementById('modal_duzenle_tedarikci').value = tedarikci;
+                    document.getElementById('modal_duzenle_parti_no').value = partiNo;
+                });
+            }
+
+            // Düzenleme modalında hammadde cinsi değişince parti no getir
+            $('#modal_duzenle_hammadde_id').on('change', function () {
+                var hammaddeId = $(this).val();
+                if (hammaddeId) {
+                    if (hammaddeId === originalHammaddeId) {
+                        $('#modal_duzenle_parti_no').val(originalPartiNo);
+                    } else {
+                        $.ajax({
+                            url: 'ajax/ajax_get_parti_no.php',
+                            type: 'GET',
+                            data: { hammadde_id: hammaddeId },
+                            success: function (response) {
+                                if (response.trim() !== '') {
+                                    $('#modal_duzenle_parti_no').val(response.trim());
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+
             // Hammadde cinsine göre otomatik seri/parti numarası getirme
-            $('select[name="hammadde_id"]').on('change', function () {
+            $('select[name="hammadde_id"]').not('#modal_duzenle_hammadde_id').on('change', function () {
                 var hammaddeId = $(this).val();
                 if (hammaddeId) {
                     $.ajax({

@@ -48,12 +48,19 @@ if ($yetki == 'admin' || $yetki == 'depo' || $yetki == 'satin_alma') {
 }
 
 // Silo Durumları — uretim, satin_alma & admin
-$silo_sorgu = null;
-if ($yetki == 'admin' || $yetki == 'uretim' || $yetki == 'satin_alma') {
-    $silo_sorgu = $baglanti->query("SELECT * FROM silolar");
+$silolar = [];
+$show_silo = ($yetki == 'admin' || $yetki == 'uretim' || $yetki == 'satin_alma');
+if ($show_silo) {
+    $sr = @$baglanti->query("
+        SELECT s.*, 
+               (SELECT p.veriler FROM plc_okumalari p JOIN plc_cihazlari c ON c.id = p.cihaz_id WHERE c.ip_adresi = s.plc_ip_adresi AND s.plc_ip_adresi IS NOT NULL ORDER BY p.id DESC LIMIT 1) AS plc_verisi
+        FROM silolar s
+        ORDER BY s.id
+    ");
+    if ($sr) while ($s = $sr->fetch_assoc()) $silolar[] = $s;
 }
 
-// Admin: Bekleyen Onaylar
+// Admin: Bekleyen Onay
 $bekleyen_onay = 0;
 if ($yetki == 'admin') {
     $table_check = @$baglanti->query("SHOW TABLES LIKE 'pending_approvals'");
@@ -420,7 +427,7 @@ $aciklama = $panel_basliklar[$yetki]['açıklama'] ?? '';
         </div>
 
         <!-- ========== SİLO DOLULUK (uretim, satin_alma, admin) ========== -->
-        <?php if ($silo_sorgu && ($yetki == 'admin' || $yetki == 'uretim' || $yetki == 'satin_alma')) { ?>
+        <?php if ($show_silo) { ?>
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="card card-custom p-4">
@@ -434,12 +441,18 @@ $aciklama = $panel_basliklar[$yetki]['açıklama'] ?? '';
 
                         <div class="row">
                             <?php
-                            if ($silo_sorgu->num_rows > 0) {
-                                while ($silo = $silo_sorgu->fetch_assoc()) {
+                            if (count($silolar) > 0) {
+                                foreach ($silolar as $silo) {
                                     $yuzde = 0;
-                                    if ($silo["kapasite_m3"] > 0) {
-                                        $yuzde = ($silo["doluluk_m3"] / $silo["kapasite_m3"]) * 100;
+                                    if (!empty($silo['plc_verisi'])) {
+                                        $plc_json = json_decode($silo['plc_verisi'], true);
+                                        if (isset($plc_json['SCADA_YUZDE'])) {
+                                            $yuzde = (float)$plc_json['SCADA_YUZDE'];
+                                        }
+                                    } else {
+                                        $yuzde = ($silo["kapasite_m3"] > 0) ? ($silo["doluluk_m3"] / $silo["kapasite_m3"]) * 100 : 0;
                                     }
+                                    $yuzde = max(0, min(100, $yuzde));
 
                                     $renk = "bg-success";
                                     if ($yuzde > 70)
