@@ -236,6 +236,115 @@ if (isset($_GET['msg'])) {
         $mesaj = "Paçal kaydı başarılı! Parti No: " . ($kaydedilen_parti_no ?: '-');
     }
 }
+
+// --- SİLO AKTARMA İŞLEMİ ---
+if (isset($_POST["silo_aktarma_kaydet"])) {
+    $force_tab = 'silo_aktarma';
+    $giris_id = (int)$_POST["giris_id"];
+    $dagitim_silo_ids = $_POST['dagitim_silo_id'] ?? [];
+    $dagitim_kgs = $_POST['dagitim_kg'] ?? [];
+    $hata_silo = "";
+
+    if ($giris_id <= 0) $hata_silo = "Geçersiz giriş ID.";
+    
+    if(empty($hata_silo)){
+        $mevcut = $baglanti->query("
+            SELECT hg.id, hg.parti_no, hg.miktar_kg, h.ad as hammadde_adi, h.hammadde_kodu,
+                   (SELECT la.hektolitre FROM lab_analizleri la WHERE la.hammadde_giris_id = hg.id ORDER BY la.id DESC LIMIT 1) as lab_hektolitre,
+                   h.yogunluk_kg_m3
+            FROM hammadde_girisleri hg
+            LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id
+            WHERE hg.id = $giris_id
+        ")->fetch_assoc();
+        
+        if(!$mevcut) $hata_silo = "Kayıt bulunamadı.";
+        else {
+            $referans_kg = (float)$mevcut['miktar_kg'];
+            $hl = (float)$mevcut['lab_hektolitre'];
+            $yogunluk = ($hl > 0) ? ($hl * 10) : (float)$mevcut['yogunluk_kg_m3'];
+            if($yogunluk <= 0) $yogunluk = 780;
+            
+            $dagitimlar = [];
+            $toplam = 0.0;
+            $ilk_silo = 0;
+            $max = max(count($dagitim_silo_ids), count($dagitim_kgs));
+            for($i=0; $i<$max; $i++) {
+                $sid= (int)($dagitim_silo_ids[$i]??0);
+                $kg = (float)($dagitim_kgs[$i]??0);
+                if($sid<=0 || $kg<=0) { $hata_silo="Geçersiz silo dağıtımı!"; break; }
+                if($ilk_silo==0) $ilk_silo=$sid;
+                if(!isset($dagitimlar[$sid])) $dagitimlar[$sid]=0.0;
+                $dagitimlar[$sid] += $kg;
+                $toplam += $kg;
+            }
+            
+            if(empty($hata_silo) && count($dagitimlar)==0) $hata_silo = "Silo dağıtımı girmediniz.";
+            if(empty($hata_silo) && abs($toplam - $referans_kg) > 0.01) $hata_silo = "Dağıtım toplamı kantar değerine ($referans_kg KG) eşit olmalıdır.";
+            
+            // Backend Silo Kapasite ve İzin Kontrolleri
+            if(empty($hata_silo)) {
+                $silo_ids = array_keys($dagitimlar);
+                $id_list = implode(',', $silo_ids);
+                $silo_kayitlari = $baglanti->query("SELECT id, silo_adi, kapasite_m3, doluluk_m3, izin_verilen_hammadde_kodlari FROM silolar WHERE id IN ($id_list)");
+                $silo_map = [];
+                while($s = $silo_kayitlari->fetch_assoc()) $silo_map[(int)$s['id']] = $s;
+
+                foreach($dagitimlar as $sid => $mkg) {
+                    if(!isset($silo_map[$sid])) { $hata_silo = "Silo bulunamadı (ID: $sid)."; break; }
+                    $s = $silo_map[$sid];
+                    $bos_m3 = max(0, (float)$s['kapasite_m3'] - (float)$s['doluluk_m3']);
+                    $max_kg = $bos_m3 * $yogunluk;
+                    if(($mkg - $max_kg) > 0.01) { $hata_silo = "{$s['silo_adi']} silosunda yeterli boşluk yok (Maks: ".number_format($max_kg,0)." KG)."; break; }
+                    
+                    $izinli_raw = trim((string)$s['izin_verilen_hammadde_kodlari']);
+                    if(!empty($izinli_raw)) {
+                        $izinli_list = json_decode($izinli_raw, true);
+                        if(is_array($izinli_list) && count($izinli_list) > 0 && !in_array($mevcut['hammadde_kodu'], $izinli_list, true)) {
+                            $hata_silo = "{$s['silo_adi']} silosuna {$mevcut['hammadde_kodu']} kodlu hammadde girişi izinli değil."; break;
+                        }
+                    }
+                }
+            }
+
+            if(empty($hata_silo)) {
+                $baglanti->begin_transaction();
+                $islem_ok = true;
+                
+                $guncel_m3 = $referans_kg / $yogunluk;
+                $p_no = $baglanti->real_escape_string($mevcut['parti_no']);
+                $h_turu = $baglanti->real_escape_string($mevcut['hammadde_adi']);
+                
+                if(!$baglanti->query("UPDATE hammadde_girisleri SET giris_m3=$guncel_m3, silo_id=$ilk_silo WHERE id=$giris_id")) {
+                    $islem_ok = false; $hata_silo = "Giriş güncellenemedi.";
+                }
+                
+                if ($islem_ok) {
+                    foreach($dagitimlar as $sid => $mkg) {
+                        $f_sql = "INSERT INTO silo_stok_detay (silo_id, parti_kodu, hammadde_turu, giren_miktar_kg, kalan_miktar_kg, giris_tarihi, durum) 
+                                  VALUES ($sid, '$p_no', '$h_turu', $mkg, $mkg, NOW(), 'aktif')";
+                        if(!$baglanti->query($f_sql)) { $islem_ok = false; $hata_silo = "FIFO eklenemedi."; break; }
+                        
+                        $m3_ekle = $mkg / $yogunluk;
+                        if(!$baglanti->query("UPDATE silolar SET doluluk_m3 = doluluk_m3 + $m3_ekle WHERE id=$sid")) {
+                            $islem_ok = false; $hata_silo = "Doluluk işlenemedi."; break;
+                        }
+                    }
+                }
+                
+                if($islem_ok) {
+                    $baglanti->commit();
+                    $mesaj = "Silo aktarımı başarıyla tamamlandı (Parti: {$mevcut['parti_no']})!";
+                    systemLogKaydet($baglanti, 'INSERT', 'Silo Aktarma', "Silo dağıtımı. Parti: {$mevcut['parti_no']} Toplam: {$referans_kg} KG");
+                } else {
+                    $baglanti->rollback();
+                    $hata = "Hata: " . $hata_silo;
+                }
+            } else {
+                $hata = $hata_silo;
+            }
+        }
+    }
+}
 // ==================== VERİ ÇEKİMLERİ ====================
 $receteler = $baglanti->query("SELECT * FROM receteler ORDER BY id DESC");
 $bugday_silolari = $baglanti->query("SELECT * FROM silolar WHERE tip='bugday' AND durum='aktif' ORDER BY silo_adi");
@@ -307,6 +416,11 @@ $aktif_tab = $force_tab ?: ($_GET['tab'] ?? 'haftalik');
                 </a>
             </li>
             <li class="nav-item" role="presentation">
+                <a href="planlama.php?tab=silo_aktarma" class="nav-link <?php echo $aktif_tab=='silo_aktarma'?'active':''; ?>" id="silo-aktarma-tab" role="tab">
+                    <i class="fas fa-right-left me-1"></i> Silo Aktarma
+                </a>
+            </li>
+            <li class="nav-item" role="presentation">
                 <a href="planlama.php?tab=pacal" class="nav-link <?php echo $aktif_tab=='pacal'?'active':''; ?>" id="pacal-tab" role="tab">
                     <i class="fas fa-blender me-1"></i> Paçal Hazırlama
                 </a>
@@ -314,6 +428,11 @@ $aktif_tab = $force_tab ?: ($_GET['tab'] ?? 'haftalik');
             <li class="nav-item" role="presentation">
                 <a href="planlama.php?tab=recete" class="nav-link <?php echo $aktif_tab=='recete'?'active':''; ?>" id="recete-tab" role="tab">
                     <i class="fas fa-bullhorn me-1"></i> Reçete & İş Emirleri
+                </a>
+            </li>
+            <li class="nav-item" role="presentation">
+                <a href="planlama.php?tab=canli_rota" class="nav-link <?php echo $aktif_tab=='canli_rota'?'active':''; ?>" id="canli-rota-tab" role="tab">
+                    <i class="fas fa-route text-success me-1"></i> Akış Rotası
                 </a>
             </li>
         </ul>
@@ -324,14 +443,24 @@ $aktif_tab = $force_tab ?: ($_GET['tab'] ?? 'haftalik');
                 <?php include("includes/planlama_haftalik_tab.php"); ?>
             </div>
 
-            <!-- SEKME 2: PAÇAL HAZIRLAMA -->
+            <!-- SEKME 2: SİLO AKTARMA -->
+            <div class="tab-pane <?php echo $aktif_tab=='silo_aktarma'?'show active':'d-none'; ?>" id="siloAktarmaArea" role="tabpanel" aria-labelledby="silo-aktarma-tab" tabindex="0">
+                <?php include("includes/planlama_silo_aktarma_tab.php"); ?>
+            </div>
+
+            <!-- SEKME 3: PAÇAL HAZIRLAMA -->
             <div class="tab-pane <?php echo $aktif_tab=='pacal'?'show active':'d-none'; ?>" id="pacalHazirla" role="tabpanel" aria-labelledby="pacal-tab" tabindex="0">
                 <?php include("includes/planlama_pacal_tab.php"); ?>
             </div>
 
-            <!-- SEKME 3: REÇETE & İŞ EMİRLERİ -->
+            <!-- SEKME 4: REÇETE & İŞ EMİRLERİ -->
             <div class="tab-pane <?php echo $aktif_tab=='recete'?'show active':'d-none'; ?>" id="receteIsEmri" role="tabpanel" aria-labelledby="recete-tab" tabindex="0">
                 <?php include("includes/planlama_recete_tab.php"); ?>
+            </div>
+
+            <!-- SEKME 5: CANLI ROTA -->
+            <div class="tab-pane <?php echo $aktif_tab=='canli_rota'?'show active':'d-none'; ?>" id="canliRota" role="tabpanel" aria-labelledby="canli-rota-tab" tabindex="0">
+                <?php if(file_exists("includes/planlama_canli_rota_tab.php")) include("includes/planlama_canli_rota_tab.php"); ?>
             </div>
         </div>
     </div>
@@ -542,6 +671,14 @@ $aktif_tab = $force_tab ?: ($_GET['tab'] ?? 'haftalik');
             }
         });
     }
+
+    // PLC Otomatik Stok Düşüm / Canlı Rota İşleyici
+    if (window.location.href.indexOf('tab=canli_rota') !== -1) {
+        setInterval(() => window.location.reload(), 15000); // 15s de bir UI guncelle
+    }
+    // Arka planda transfer veritabanını işlemesi için her 5s'de endpoint tetikle (Lock mantığı DB'de var)
+    setInterval(() => fetch('ajax/plc_stok_guncelleme.php?gizli_key=1').catch(()=>{}), 5000);
+    
     </script>
     <?php echo yazmaYetkisiKontrolJS($baglanti); ?>
 </body>

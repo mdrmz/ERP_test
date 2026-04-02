@@ -52,9 +52,18 @@ $silolar = [];
 $show_silo = ($yetki == 'admin' || $yetki == 'uretim' || $yetki == 'satin_alma');
 if ($show_silo) {
     $sr = @$baglanti->query("
-        SELECT s.*, 
-               (SELECT p.veriler FROM plc_okumalari p JOIN plc_cihazlari c ON c.id = p.cihaz_id WHERE c.ip_adresi = s.plc_ip_adresi AND s.plc_ip_adresi IS NOT NULL ORDER BY p.id DESC LIMIT 1) AS plc_verisi
-        FROM silolar s
+        SELECT 
+            s.id, s.silo_adi, s.tip, s.kapasite_m3, s.doluluk_m3, s.aktif_hammadde_kodu,
+            (SELECT p.veriler FROM plc_okumalari p JOIN plc_cihazlari c ON c.id = p.cihaz_id WHERE c.ip_adresi = s.plc_ip_adresi AND s.plc_ip_adresi IS NOT NULL ORDER BY p.id DESC LIMIT 1) AS plc_verisi,
+            (
+                SELECT MAX(COALESCE(la.hektolitre, lap.hektolitre)) 
+                FROM silo_stok_detay ssd 
+                LEFT JOIN hammadde_girisleri hg ON hg.parti_no = ssd.parti_kodu 
+                LEFT JOIN lab_analizleri la ON la.hammadde_giris_id = hg.id
+                LEFT JOIN lab_analizleri lap ON lap.parti_no = ssd.parti_kodu
+                WHERE ssd.silo_id = s.id AND ssd.kalan_miktar_kg > 0
+            ) AS lab_hekto
+        FROM silolar s 
         ORDER BY s.id
     ");
     if ($sr) while ($s = $sr->fetch_assoc()) $silolar[] = $s;
@@ -444,31 +453,43 @@ $aciklama = $panel_basliklar[$yetki]['açıklama'] ?? '';
                             if (count($silolar) > 0) {
                                 foreach ($silolar as $silo) {
                                     $yuzde = 0;
+                                    $calisiyor = false;
                                     if (!empty($silo['plc_verisi'])) {
                                         $plc_json = json_decode($silo['plc_verisi'], true);
                                         if (isset($plc_json['SCADA_YUZDE'])) {
                                             $yuzde = (float)$plc_json['SCADA_YUZDE'];
+                                        }
+                                        if (isset($plc_json['AKAR_DURUM']) && $plc_json['AKAR_DURUM'] > 0) {
+                                            $calisiyor = true;
                                         }
                                     } else {
                                         $yuzde = ($silo["kapasite_m3"] > 0) ? ($silo["doluluk_m3"] / $silo["kapasite_m3"]) * 100 : 0;
                                     }
                                     $yuzde = max(0, min(100, $yuzde));
 
-                                    $renk = "bg-success";
-                                    if ($yuzde > 70)
-                                        $renk = "bg-warning";
-                                    if ($yuzde > 90)
-                                        $renk = "bg-danger";
+                                    // Sistem çalışıyorsa bar animasyonlu kırmızı olur
+                                    if ($calisiyor) {
+                                        $renk = "bg-danger progress-bar-striped progress-bar-animated";
+                                    } else {
+                                        $renk = "bg-success";
+                                        if ($yuzde > 70) $renk = "bg-warning";
+                                        if ($yuzde > 90) $renk = "bg-danger";
+                                    }
 
                                     $ikon = ($silo["tip"] == 'un') ? '<i class="fas fa-bread-slice text-secondary"></i>' : '<i class="fas fa-wheat text-warning"></i>';
+                                    $aktif_urun = htmlspecialchars($silo["aktif_hammadde_kodu"] ?? 'BOŞ');
+                                    $hek = floatval($silo["lab_hekto"] ?? 0);
+                                    $hek_format = $hek > 0 ? " | Hek: " . number_format($hek, 1) : "";
                                     ?>
                                     <div class="col-md-6 col-lg-4 mb-4">
-                                        <div class="border rounded p-3 bg-light h-100 position-relative">
-                                            <div class="d-flex justify-content-between mb-2">
-                                                <strong class="text-dark"><?php echo $ikon; ?>
-                                                    <?php echo $silo["silo_adi"]; ?></strong>
-                                                <span
-                                                    class="badge bg-secondary"><?php echo $silo["aktif_hammadde_kodu"] ? $silo["aktif_hammadde_kodu"] : 'BOŞ'; ?></span>
+                                        <div class="border rounded p-3 bg-light h-100 position-relative <?php echo $calisiyor ? 'border-danger border-2 shadow-sm' : ''; ?>">
+                                            <div class="d-flex justify-content-between mb-2 align-items-center">
+                                                <strong class="<?php echo $calisiyor ? 'text-danger' : 'text-dark'; ?>">
+                                                    <?php echo $ikon; ?>
+                                                    <?php echo htmlspecialchars($silo["silo_adi"]); ?>
+                                                    <?php if($calisiyor) echo '<i class="fas fa-cog fa-spin ms-1"></i>'; ?>
+                                                </strong>
+                                                <span class="badge bg-secondary"><?php echo $aktif_urun . $hek_format; ?></span>
                                             </div>
 
                                             <div class="progress mb-2">
@@ -489,6 +510,49 @@ $aciklama = $panel_basliklar[$yetki]['açıklama'] ?? '';
                             } else {
                                 echo "<div class='col-12 text-center text-muted'>Sistemde kayıtlı silo yok.</div>";
                             } ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php } ?>
+
+        <!-- ========== PATRON: CANLI SİLO AKIŞ PANELİ ========== -->
+        <?php if ($is_patron) { ?>
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card card-custom p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="card-title mb-0 fw-bold">
+                                <i class="fas fa-bolt text-warning me-2"></i>Canlı Silo Akış Durumu
+                                <span class="badge bg-dark ms-2" style="font-size:10px;" id="plc_guncelleme_zamani">Yükleniyor...</span>
+                            </h5>
+                            <a href="tv_modu.php" target="_blank" class="btn btn-sm btn-outline-dark">
+                                <i class="fas fa-tv me-1"></i> TV Modu
+                            </a>
+                        </div>
+                        <div class="row g-2">
+                            <?php
+                            $patron_silos = $baglanti->query("SELECT id, silo_adi, tip, plc_ip_adresi FROM silolar WHERE plc_ip_adresi IS NOT NULL AND plc_ip_adresi != '' ORDER BY tip, silo_adi");
+                            if ($patron_silos && $patron_silos->num_rows > 0) {
+                                while($ps = $patron_silos->fetch_assoc()) {
+                                    $tip_renk = ['bugday' => 'warning', 'un' => 'secondary', 'tav' => 'info', 'kepek' => 'success'];
+                                    $renk = $tip_renk[$ps['tip']] ?? 'primary';
+                                    $tip_label = ['bugday' => 'Bu\u011fday', 'un' => 'Un', 'tav' => 'Tav', 'kepek' => 'Kepek'];
+                                    $tip_text = $tip_label[$ps['tip']] ?? $ps['tip'];
+                            ?>
+                                <div class="col-6 col-md-4 col-lg-3">
+                                    <div class="border rounded-3 p-2 h-100 plc-patron-card" data-plc-ip="<?php echo htmlspecialchars($ps['plc_ip_adresi']); ?>">
+                                        <div class="d-flex justify-content-between align-items-start mb-1">
+                                            <div>
+                                                <div class="fw-bold small"><?php echo htmlspecialchars($ps['silo_adi']); ?></div>
+                                                <span class="badge bg-<?php echo $renk; ?> bg-opacity-75" style="font-size:9px;"><?php echo $tip_text; ?></span>
+                                            </div>
+                                            <span class="badge bg-secondary patron-durum-badge" style="font-size:9px;">...</span>
+                                        </div>
+                                        <div class="patron-akis-val text-muted small mt-1" style="min-height:18px;">—</div>
+                                    </div>
+                                </div>
+                            <?php }} else { echo '<div class="col-12 text-muted small">PLC bağlantısı tanımlı silo bulunamadı.</div>'; } ?>
                         </div>
                     </div>
                 </div>
@@ -703,6 +767,57 @@ $aciklama = $panel_basliklar[$yetki]['açıklama'] ?? '';
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
+    <?php if ($is_patron): ?>
+    <script>
+        function patronPlcGuncelle() {
+            fetch('ajax/plc_veri.php')
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.basari || !data.cihazlar) return;
+                    const plcMap = {};
+                    data.cihazlar.forEach(c => { if (c.ip) plcMap[c.ip] = c; });
 
+                    document.querySelectorAll('.plc-patron-card').forEach(card => {
+                        const ip = card.getAttribute('data-plc-ip');
+                        const badge = card.querySelector('.patron-durum-badge');
+                        const akisVal = card.querySelector('.patron-akis-val');
+                        if (!ip || !plcMap[ip]) {
+                            if (badge) { badge.className = 'badge bg-secondary patron-durum-badge'; badge.innerText = 'Pasif'; }
+                            if (akisVal) akisVal.innerHTML = '<span class="text-muted">—</span>';
+                            return;
+                        }
+                        const v = plcMap[ip].veriler;
+                        if (!v) return;
+                        const akis = parseFloat(v.ANLIK_TONAJ) || 0;
+                        const durum = parseInt(v.AKAR_DURUM) || 0;
+                        const yuzde = parseInt(v.SCADA_YUZDE) || 0;
+
+                        if (durum === 2 && akis > 0) {
+                            badge.className = 'badge bg-success patron-durum-badge';
+                            badge.innerHTML = '<span class="spinner-grow spinner-grow-sm" style="width:7px;height:7px;"></span> Akıyor';
+                            card.style.borderColor = '#198754';
+                            card.style.background = 'rgba(25,135,84,0.06)';
+                            akisVal.innerHTML = '<strong class="text-success">' + Math.round(akis).toLocaleString('tr-TR') + ' kg/h</strong>' +
+                                (yuzde > 0 ? ' <span class="text-muted">(%' + yuzde + ')</span>' : '');
+                        } else {
+                            badge.className = 'badge bg-light text-secondary border patron-durum-badge';
+                            badge.innerText = 'Beklemede';
+                            card.style.borderColor = '';
+                            card.style.background = '';
+                            akisVal.innerHTML = '<span class="text-muted small">0 kg/h</span>';
+                        }
+                    });
+
+                    const zaman = document.getElementById('plc_guncelleme_zamani');
+                    if (zaman) {
+                        const now = new Date();
+                        zaman.innerText = now.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                    }
+                }).catch(() => {});
+        }
+        setTimeout(patronPlcGuncelle, 600);
+        setInterval(patronPlcGuncelle, 5000);
+    </script>
+    <?php endif; ?>
+</body>
 </html>

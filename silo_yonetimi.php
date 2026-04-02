@@ -225,6 +225,61 @@ if (isset($_POST['silo_sifirla'])) {
     }
 }
 
+// 5. MANUEL STOK VE HEKTOLİTRE BELİRLEME
+if (isset($_POST['silo_manuel_belirle'])) {
+    $id        = (int)($_POST['silo_id'] ?? 0);
+    $yeni_kg   = (float)($_POST['yeni_kg'] ?? 0);
+    $yeni_hek  = (float)($_POST['yeni_hek'] ?? 0);
+
+    if ($id > 0 && $yeni_kg > 0 && $yeni_hek > 0) {
+        $baglanti->begin_transaction();
+        try {
+            // Hangi ürün var siloda? (Eğer POST ile gönderildiyse onu kullan, yoksa silonun aktif kodunu kullan)
+            if (!empty($_POST['aktif_hammadde_kodu'])) {
+                $aktif_hammadde_kodu = $baglanti->real_escape_string($_POST['aktif_hammadde_kodu']);
+                // Silonun aktif kodunu da doğrudan güncelle ki ileride sorun çıkmasın
+                $baglanti->query("UPDATE silolar SET aktif_hammadde_kodu='$aktif_hammadde_kodu' WHERE id=$id");
+            } else {
+                $s_q = $baglanti->query("SELECT aktif_hammadde_kodu FROM silolar WHERE id=$id");
+                $aktif_hammadde_kodu = $s_q->fetch_assoc()['aktif_hammadde_kodu'] ?? 'Bilinmeyen';
+            }
+
+            // 1) Mevcut stokları "tükendi" ve miktar 0 yap. (Siloyu sıfırla)
+            $baglanti->query("UPDATE silo_stok_detay SET kalan_miktar_kg=0, durum='tükendi' WHERE silo_id=$id AND kalan_miktar_kg>0");
+
+            // 2) Yeni özel parti kodu oluştur
+            $custom_parti_no = 'MAN-S' . $id . '-' . date('YmdHi');
+
+            // 3) Yeni Stok kaydı gir
+            $ins_stok = "INSERT INTO silo_stok_detay (silo_id, parti_kodu, hammadde_turu, giren_miktar_kg, kalan_miktar_kg, giris_tarihi, durum)
+                         VALUES ($id, '$custom_parti_no', '$aktif_hammadde_kodu', $yeni_kg, $yeni_kg, NOW(), 'aktif')";
+            if (!$baglanti->query($ins_stok)) throw new Exception($baglanti->error);
+
+            // 4) Hektolitre için fake lab analizi kaydı gir (sadece bu siloyu etkiler)
+            $ins_lab = "INSERT INTO lab_analizleri (parti_no, hektolitre, tarih) VALUES ('$custom_parti_no', $yeni_hek, NOW())";
+            if (!$baglanti->query($ins_lab)) throw new Exception($baglanti->error);
+
+            // 5) doluluk_m3 yeniden hesapla
+            $yogunluk_sql = "SELECT COALESCE(yogunluk_kg_m3, 780) AS yog FROM hammaddeler WHERE hammadde_kodu = '$aktif_hammadde_kodu'";
+            $yog_res = $baglanti->query($yogunluk_sql);
+            $yogunluk = $yog_res && $yog_res->num_rows > 0 ? (float)($yog_res->fetch_assoc()['yog']) : 780;
+            if ($yogunluk <= 0) $yogunluk = 780;
+
+            $yeni_doluluk_m3 = $yeni_kg / $yogunluk;
+            $upd_silo = "UPDATE silolar SET doluluk_m3=$yeni_doluluk_m3 WHERE id=$id";
+            if (!$baglanti->query($upd_silo)) throw new Exception($baglanti->error);
+
+            $baglanti->commit();
+            $mesaj = "✅ Silo değeri manuel olarak " . number_format($yeni_kg, 0, ',', '.') . " kg ve $yeni_hek Hektolitre yapıldı.";
+        } catch (Throwable $e) {
+            $baglanti->rollback();
+            $hata = "Manuel belirleme hatası: " . $e->getMessage();
+        }
+    } else {
+        $hata = "Lütfen geçerli silo, kg ve hektolitre değeri giriniz.";
+    }
+}
+
 // SİLO VERİLERİNİ ÇEKME
 $silolar_bugday = silolariDogalSirala($baglanti->query("SELECT * FROM silolar WHERE tip='bugday'"));
 $silolar_un = silolariDogalSirala($baglanti->query("SELECT * FROM silolar WHERE tip='un'"));
@@ -334,6 +389,21 @@ if ($karisim_result) {
     }
 }
 
+// --- SİLO ÖZET İSTATİSTİKLERİ ---
+$silo_ozet_res = $baglanti->query("SELECT 
+    COUNT(*) as toplam,
+    SUM(CASE WHEN doluluk_m3 = 0 THEN 1 ELSE 0 END) as bos,
+    SUM(CASE WHEN doluluk_m3 > 0 THEN 1 ELSE 0 END) as dolu,
+    SUM(kapasite_m3) as toplam_kapasite,
+    SUM(doluluk_m3) as mevcut_doluluk
+FROM silolar");
+$silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
+    'toplam' => 0, 
+    'bos' => 0, 
+    'dolu' => 0, 
+    'toplam_kapasite' => 0, 
+    'mevcut_doluluk' => 0
+];
 ?>
 <!DOCTYPE html>
 <html lang="tr">
@@ -416,6 +486,62 @@ if ($karisim_result) {
             <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#yeniSiloModal">
                 <i class="fas fa-plus"></i> Yeni Silo Ekle
             </button>
+        </div>
+
+        <!-- SİLO ÖZET KARTLARI -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card shadow-sm border-0 bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="card-title mb-1 opacity-75 small">Toplam Silo</h6>
+                                <h3 class="mb-0 fw-bold"><?php echo $silo_ozet['toplam']; ?></h3>
+                            </div>
+                            <i class="fas fa-warehouse fa-2x opacity-25"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm border-0 bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="card-title mb-1 opacity-75 small">Müsait (Boş) Silo</h6>
+                                <h3 class="mb-0 fw-bold"><?php echo $silo_ozet['bos']; ?></h3>
+                            </div>
+                            <i class="fas fa-check-circle fa-2x opacity-25"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm border-0 bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="card-title mb-1 opacity-75 small">Dolu / Aktif Silo</h6>
+                                <h3 class="mb-0 fw-bold"><?php echo $silo_ozet['dolu']; ?></h3>
+                            </div>
+                            <i class="fas fa-fill-drip fa-2x opacity-25"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm border-0 bg-warning text-dark">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="card-title mb-1 opacity-75 small">Toplam Kapasite</h6>
+                                <h3 class="mb-0 fw-bold"><?php echo sayiFormat($silo_ozet['toplam_kapasite'], 0); ?> <span class="small fw-normal">m&sup3;</span></h3>
+                            </div>
+                            <i class="fas fa-database fa-2x opacity-25"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
 
@@ -543,8 +669,12 @@ if ($karisim_result) {
                             $karisim_html .= "</ul>";
                         }
 
+                        $plc_ip_attr = '';
+                        if (!empty($row['plc_ip_adresi'])) {
+                            $plc_ip_attr = "data-plc-ip='" . htmlspecialchars($row['plc_ip_adresi'], ENT_QUOTES, 'UTF-8') . "'";
+                        }
                         echo "
-                    <div class='col-md-6 col-lg-4 mb-4'>
+                    <div class='col-md-6 col-lg-4 mb-4 silo-card-wrapper' data-kategori='$key' $plc_ip_attr>
                         <div class='card shadow-sm h-100 border-start border-4 border-primary'>
                             <div class='card-header bg-white d-flex justify-content-between align-items-center'>
                                 <h5 class='mb-0 text-primary'><i class='fas $ikon'></i> $silo_adi</h5>
@@ -585,7 +715,17 @@ if ($karisim_result) {
                                     <small><strong>Sadece Bunlar Girebilir:</strong> $izinli_metin</small>
                                 </div>
 
-                                " . (!empty($row['plc_ip_adresi']) ? "<div class='alert alert-info py-1 px-2 mb-2 text-center border'><small><i class='fas fa-network-wired'></i> PLC: {$row['plc_ip_adresi']}</small></div>" : "") . "
+                                " . (!empty($row['plc_ip_adresi']) ? "
+                                <div class='border rounded px-2 py-1 mb-2 bg-light plc-status-container d-flex flex-column'>
+                                    <div class='d-flex justify-content-between align-items-center mb-1'>
+                                        <small class='text-muted' style='font-size:11px;'><i class='fas fa-network-wired'></i> {$row['plc_ip_adresi']}</small>
+                                        <span class='badge bg-secondary plc-durum-badge' style='font-size:10px;'>Bağlantı Bekleniyor</span>
+                                    </div>
+                                    <div class='d-flex justify-content-between align-items-center plc-flow-row' style='display:none !important;'>
+                                        <span class='fw-bold text-success plc-akis-val' style='font-size:1.1rem;'>0 <small class='text-muted' style='font-size:10px;'>kg/h</small></span>
+                                        <span class='badge bg-info plc-oran-badge' title='Paçal Oranı (Aktifler Arasında)'>%0</span>
+                                    </div>
+                                </div>" : "") . "
 
                                 <div class='border rounded p-2 mb-2 bg-light-subtle'>
                                     <div class='small fw-semibold text-muted mb-1'>Silo Karisimi (kalan kg / oran)</div>
@@ -596,6 +736,7 @@ if ($karisim_result) {
                                     <button class='btn btn-sm btn-outline-secondary w-100' onclick='duzenleModal(" . json_encode($row) . ")'>
                                         <i class='fas fa-cog'></i> Düzenle
                                     </button>
+                                    <button class='btn btn-sm btn-outline-warning w-100' onclick='manuelSeviyeModalAc($silo_id, \"$silo_adi\", $toplam_kalan_kg, \"$aktif_kod_raw\", \"$key\")' title='Manuel KG/Hektolitre Belirle'><i class='fas fa-edit'></i> Seviye Belirle</button>
                                     ";
 
                         if ($dol_m3 > 0) {
@@ -734,7 +875,55 @@ if ($karisim_result) {
         </div>
     </div>
 
-    <!-- Diğer Modallar -->
+    <!-- MODAL: MANUEL STOK/HEKTOLİTRE BELİRLEME -->
+    <div class="modal fade" id="manuelSeviyeModal" tabindex="-1">
+        <div class="modal-dialog">
+            <form method="post" class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Sıfırlama (KG / Hektolitre) Ayarla</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="silo_id" id="manuel_silo_id">
+                    <div class="alert alert-warning py-2 small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Bu işlem, <strong>silonun mevcut içeriğini (kg) ve hektolitre değerini tamamen ezer</strong>. Yeni girilen değerler üzerinden siloyu doldurur ve sadece bu siloyu etkiler. Lab kayıtlarına doğrudan dokunmaz.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Silo</label>
+                        <input type="text" id="manuel_silo_adi" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Mevcut Stok (Eski)</label>
+                        <input type="text" id="manuel_mevcut_kg" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Girecek Ürün Cinsi <span class="text-danger">*</span></label>
+                        <select name="aktif_hammadde_kodu" id="manuel_aktif_kodu" class="form-select" required>
+                            <option value="">-- Ürün Seçin --</option>
+                            <?php foreach ($hammadde_listesi as $h) { ?>
+                                <option value="<?php echo $h['hammadde_kodu']; ?>"><?php echo $h['hammadde_kodu']; ?></option>
+                            <?php } ?>
+                        </select>
+                        <small class="text-muted">Lütfen siloya atanacak ürünü seçin.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Yeni Miktar (Sıfırlama KG) <span class="text-danger">*</span></label>
+                        <input type="number" name="yeni_kg" id="manuel_kg_input" class="form-control" step="0.01" min="1" required placeholder="Örn: 20000">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Yeni Hektolitre (Sıfırlama Hek) <span class="text-danger">*</span></label>
+                        <input type="number" name="yeni_hek" id="manuel_hek_input" class="form-control" step="0.1" min="1" required placeholder="Örn: 78.5">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" name="silo_manuel_belirle" class="btn btn-warning"><i class="fas fa-check me-1"></i>Uygula</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="modal fade" id="sifirlaModal" tabindex="-1">
         <div class="modal-dialog">
             <form method="post" class="modal-content">
@@ -866,19 +1055,61 @@ if ($karisim_result) {
             document.getElementById('edit_adi').value = data.silo_adi || '';
             document.getElementById('edit_kapasite').value = data.kapasite_m3 || '';
             document.getElementById('edit_durum').value = data.durum || 'aktif';
-            document.getElementById('edit_aktif_kod').value = data.aktif_hammadde_kodu || '';
             document.getElementById('edit_plc_ip').value = data.plc_ip_adresi || '';
 
+            let tip = data.tip || 'bugday';
+            let icerikContainer = document.getElementById('edit_aktif_kod').closest('.col-md-6');
+            let sel = document.getElementById('edit_aktif_kod');
+            
             document.querySelectorAll('.izinli-check').forEach(cb => cb.checked = false);
-            if (data.izin_verilen_hammadde_kodlari) {
-                try {
-                    JSON.parse(data.izin_verilen_hammadde_kodlari).forEach(k => {
-                        let cb = document.getElementById('chk_' + k);
-                        if (cb) cb.checked = true;
-                    });
-                } catch (e) { }
+
+            if (tip === 'un' || tip === 'tav' || tip === 'kepek') {
+                icerikContainer.style.display = 'none';
+                let val = tip.toUpperCase() + '_PACAL';
+                let found = false;
+                for(let i=0; i<sel.options.length; i++) if(sel.options[i].value === val) found = true;
+                if(!found) { let o=document.createElement('option'); o.value=val; o.text=val; sel.appendChild(o); }
+                sel.value = val;
+            } else {
+                icerikContainer.style.display = 'block';
+                sel.value = data.aktif_hammadde_kodu || '';
+                
+                if (data.izin_verilen_hammadde_kodlari) {
+                    try {
+                        JSON.parse(data.izin_verilen_hammadde_kodlari).forEach(k => {
+                            let cb = document.getElementById('chk_' + k);
+                            if (cb) cb.checked = true;
+                        });
+                    } catch (e) { }
+                }
             }
+
             new bootstrap.Modal(document.getElementById('duzenleModal')).show();
+        }
+
+        function manuelSeviyeModalAc(id, adi, mevcutKg, aktifGirenKod = '', kategori = 'bugday') {
+            document.getElementById('manuel_silo_id').value = id;
+            document.getElementById('manuel_silo_adi').value = adi;
+            document.getElementById('manuel_mevcut_kg').value = mevcutKg.toLocaleString('tr-TR', {maximumFractionDigits: 0}) + ' kg';
+            document.getElementById('manuel_kg_input').value = mevcutKg > 0 ? mevcutKg : '';
+            document.getElementById('manuel_hek_input').value = '';
+            
+            let aktifHammaddeKapsayici = document.getElementById('manuel_aktif_kodu').parentElement;
+            let sel = document.getElementById('manuel_aktif_kodu');
+
+            if (kategori === 'un' || kategori === 'tav' || kategori === 'kepek') {
+                aktifHammaddeKapsayici.style.display = 'none';
+                let val = kategori.toUpperCase() + '_PACAL';
+                let found = false;
+                for(let i=0; i<sel.options.length; i++) if(sel.options[i].value === val) found = true;
+                if(!found) { let o=document.createElement('option'); o.value=val; o.text=val; sel.appendChild(o); }
+                sel.value = val;
+            } else {
+                aktifHammaddeKapsayici.style.display = 'block';
+                sel.value = aktifGirenKod;
+            }
+
+            new bootstrap.Modal(document.getElementById('manuelSeviyeModal')).show();
         }
 
         function sifirlaModal(id, adi) {
@@ -956,6 +1187,99 @@ if ($karisim_result) {
             labModalDoldur(labData, hammaddeKodu, partiKodu);
             new bootstrap.Modal(document.getElementById('labAnalizModal')).show();
         });
+
+        // Gerçek Zamanlı PLC Akış ve Paçal Oranı Takibi
+        function updatePLCFlows() {
+            fetch('ajax/plc_veri.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.basari || !data.cihazlar) return;
+                    
+                    // Cihaz verilerini IP'ye göre haritalayalım
+                    const plcMap = {};
+                    data.cihazlar.forEach(c => {
+                        if (c.ip) plcMap[c.ip] = c;
+                    });
+
+                    // Her kategori için toplam aktif flow'u hesaplayacağız (paçal oranı için)
+                    const kategoriFlowTotals = { 'bugday': 0, 'un': 0, 'tav': 0, 'kepek': 0 };
+                    
+                    document.querySelectorAll('.silo-card-wrapper').forEach(card => {
+                        const ip = card.getAttribute('data-plc-ip');
+                        const kategori = card.getAttribute('data-kategori');
+                        if (ip && plcMap[ip]) {
+                            const veriler = plcMap[ip].veriler;
+                            if (veriler && (veriler.ANLIK_TONAJ || veriler.ANLIK_TONAJ === 0)) {
+                                const akis = parseFloat(veriler.ANLIK_TONAJ) || 0;
+                                const aktif = parseInt(veriler.AKAR_DURUM) === 2;
+                                if (aktif && akis > 0) {
+                                    kategoriFlowTotals[kategori] += akis;
+                                }
+                            }
+                        }
+                    });
+
+                    // Arayüzü Güncelle
+                    document.querySelectorAll('.silo-card-wrapper').forEach(card => {
+                        const ip = card.getAttribute('data-plc-ip');
+                        const kategori = card.getAttribute('data-kategori');
+                        const durumBadge = card.querySelector('.plc-durum-badge');
+                        const flowRow = card.querySelector('.plc-flow-row');
+                        const akisVal = card.querySelector('.plc-akis-val');
+                        const oranBadge = card.querySelector('.plc-oran-badge');
+
+                        if (!ip || !plcMap[ip]) {
+                            if (durumBadge) {
+                                durumBadge.className = 'badge bg-secondary plc-durum-badge';
+                                durumBadge.innerText = 'Çevrimdışı / Pasif';
+                            }
+                            return;
+                        }
+
+                        const plcData = plcMap[ip];
+                        const veriler = plcData.veriler;
+
+                        // PLC'nin 5 dakikadan eski verisi varsa pasif sayabiliriz ama
+                        // cihazdan gelen 'AKIS' var genelde
+                        if (!veriler || (veriler.ANLIK_TONAJ === undefined && veriler.AKAR_DURUM === undefined)) {
+                            if (durumBadge) {
+                                durumBadge.className = 'badge bg-warning text-dark plc-durum-badge';
+                                durumBadge.innerText = 'Akış Verisi Yok';
+                            }
+                            return;
+                        }
+
+                        const akis = parseFloat(veriler.ANLIK_TONAJ) || 0;
+                        const akarDurum = parseInt(veriler.AKAR_DURUM) || 0;
+                        
+                        if (akarDurum === 2 && akis > 0) {
+                            // Çalışıyor
+                            durumBadge.className = 'badge bg-success plc-durum-badge';
+                            durumBadge.innerHTML = '<span class=\"spinner-grow spinner-grow-sm\" role=\"status\" aria-hidden=\"true\" style=\"width:10px;height:10px;margin-right:3px;\"></span> Çalışıyor';
+                            
+                            if (flowRow) flowRow.style.setProperty('display', 'flex', 'important');
+                            if (akisVal) akisVal.innerHTML = Math.round(akis).toLocaleString('tr-TR') + ' <small class=\"text-muted\" style=\"font-size:10px;\">kg/h</small>';
+                            
+                            // Oran hesapla
+                            if (oranBadge) {
+                                const toplam = kategoriFlowTotals[kategori] || 0;
+                                const oran = (toplam > 0) ? (akis / toplam) * 100 : 0;
+                                oranBadge.innerText = '%' + oran.toFixed(1);
+                            }
+                        } else {
+                            // Beklemede
+                            durumBadge.className = 'badge bg-light text-secondary border plc-durum-badge';
+                            durumBadge.innerText = 'Beklemede';
+                            if (flowRow) flowRow.style.setProperty('display', 'none', 'important');
+                        }
+                    });
+                })
+                .catch(err => console.error('PLC veri hatası:', err));
+        }
+
+        // İlk yükleme ve periyodik güncelleme
+        setTimeout(updatePLCFlows, 500); // UI çizildikten hemen sonra
+        setInterval(updatePLCFlows, 5000); // 5 saniyede bir güncelle
     </script>
 
     <?php echo yazmaYetkisiKontrolJS($baglanti); ?>

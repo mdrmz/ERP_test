@@ -923,6 +923,10 @@ if ($can_onay) {
                         echo 'active'; ?>">
                         <i class="fas fa-users-gear"></i> Kullanıcılar
                     </a>
+                    <a href="tv_modu.php" class="nav-link <?php if ($sayfa == 'tv_modu.php')
+                        echo 'active'; ?>" target="_blank">
+                        <i class="fas fa-tv"></i> TV Modu
+                    </a>
                 <?php } ?>
             </div>
         <?php } ?>
@@ -1079,6 +1083,10 @@ if ($can_onay) {
                 <a href="kullanici_yonetimi.php" class="menu-item <?php if ($sayfa == 'kullanici_yonetimi.php')
                     echo 'active'; ?>">
                     <i class="fas fa-users"></i> Kullanıcı
+                </a>
+                <a href="tv_modu.php" class="menu-item <?php if ($sayfa == 'tv_modu.php')
+                    echo 'active'; ?>" target="_blank">
+                    <i class="fas fa-tv"></i> TV
                 </a>
             <?php } ?>
         <?php } ?>
