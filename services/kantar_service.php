@@ -26,6 +26,16 @@ function kantarUtf8($text)
         }
     }
 
+    $replacements = [
+        "\x30\x01" => "İ",
+        "\x31\x01" => "ı",
+        "\x5e\x01" => "Ş",
+        "\x5f\x01" => "ş",
+        "\x1e\x01" => "Ğ",
+        "\x1f\x01" => "ğ"
+    ];
+    $text = strtr($text, $replacements);
+
     return trim($text);
 }
 
@@ -68,7 +78,11 @@ function kantarReadEndpoint($ip, $port, $file = 'tartim.txt')
         curl_setopt($ch, CURLOPT_TIMEOUT, 5);
         $raw = curl_exec($ch);
         $curlError = (string) curl_error($ch);
-        curl_close($ch);
+        if (is_resource($ch)) {
+            curl_close($ch);
+        } else {
+            unset($ch);
+        }
     }
 
     if (($raw === false || trim((string) $raw) === '') && function_exists('fsockopen')) {
@@ -325,6 +339,25 @@ function kantarGetLatestByPlate($baglanti, $plate)
     $sql = "SELECT *
             FROM kantar_okumalari
             WHERE plaka_norm = '{$plateNormEsc}'
+            ORDER BY COALESCE(tartim_zamani, cekim_zamani) DESC, id DESC
+            LIMIT 1";
+
+    $res = $baglanti->query($sql);
+    if ($res && $res->num_rows > 0) {
+        return ['ok' => true, 'found' => true, 'row' => $res->fetch_assoc()];
+    }
+
+    return ['ok' => true, 'found' => false];
+}
+
+function kantarGetLatestOverall($baglanti)
+{
+    if (!kantarTableExists($baglanti)) {
+        return ['ok' => false, 'error' => 'kantar_okumalari tablosu bulunamadi.'];
+    }
+
+    $sql = "SELECT *
+            FROM kantar_okumalari
             ORDER BY COALESCE(tartim_zamani, cekim_zamani) DESC, id DESC
             LIMIT 1";
 

@@ -87,13 +87,17 @@ if ($can_onay) {
 
 <style>
     :root {
-        --sidebar-w: 260px;
-        --dark-bg: #1a1d23;
-        --darker-bg: #12151a;
-        --gold: #f5a623;
-        --gold-dim: rgba(245, 166, 35, 0.15);
-        --text: #e2e8f0;
-        --text-muted: #64748b;
+        --sidebar-w: 270px;
+        --dark-bg: #0a0a0a;
+        --darker-bg: #000000;
+        --gold: #ffffff;
+        --gold-dim: rgba(255, 255, 255, 0.06);
+        --accent: #f5a623;
+        --accent-dim: rgba(245, 166, 35, 0.12);
+        --text: rgba(255,255,255,0.92);
+        --text-muted: rgba(255,255,255,0.4);
+        --border: rgba(255,255,255,0.08);
+        --glass: rgba(255,255,255,0.04);
     }
 
     * {
@@ -118,178 +122,222 @@ if ($can_onay) {
             flex-direction: column;
             z-index: 1000;
             overflow: hidden;
+            border-right: 1px solid var(--border);
         }
 
+        /* LOGO */
         .logo-box {
-            padding: 24px 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-            text-align: center;
+            padding: 26px 22px 20px;
+            border-bottom: 1px solid var(--border);
         }
 
         .logo-box h3 {
             margin: 0;
             color: #fff;
-            font-size: 1.3rem;
+            font-size: 1rem;
             font-weight: 700;
             display: flex;
             align-items: center;
-            justify-content: center;
             gap: 10px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
         }
 
         .logo-box h3 i {
-            color: var(--gold);
+            color: var(--accent);
+            font-size: 1.15rem;
         }
 
         .logo-box .role {
             display: inline-block;
             margin-top: 10px;
-            padding: 4px 14px;
-            background: var(--gold);
-            color: #000;
-            font-size: 0.65rem;
-            font-weight: 700;
+            padding: 4px 12px;
+            background: var(--accent-dim);
+            color: var(--accent);
+            font-size: 0.58rem;
+            font-weight: 600;
             text-transform: uppercase;
-            border-radius: 20px;
-            letter-spacing: 1px;
+            border-radius: 4px;
+            letter-spacing: 2px;
+            border: 1px solid rgba(245,166,35,0.2);
         }
 
+        /* NAV AREA */
         .nav-area {
             flex: 1;
             overflow-y: auto;
-            padding: 16px 12px;
+            padding: 16px 12px 12px;
         }
 
-        .nav-area::-webkit-scrollbar {
-            width: 4px;
-        }
-
-        .nav-area::-webkit-scrollbar-thumb {
-            background: var(--gold);
-            border-radius: 4px;
-        }
+        .nav-area::-webkit-scrollbar { width: 0; }
 
         .nav-group {
-            margin-bottom: 20px;
+            margin-bottom: 6px;
         }
 
+        /* Grup başlığı - solda ince amber çizgi */
         .nav-group-title {
-            font-size: 0.6rem;
+            font-size: 0.58rem;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: var(--text-muted);
-            padding: 0 12px 8px;
+            letter-spacing: 2px;
+            color: rgba(255,255,255,0.25);
+            padding: 12px 14px 6px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
+        .nav-group-title::before {
+            content: '';
+            width: 2px;
+            height: 10px;
+            background: var(--accent);
+            border-radius: 2px;
+            opacity: 0.5;
+            flex-shrink: 0;
+        }
+
+        /* NAV LİNKLER - Tesla gibi büyük, net, dokunması kolay */
         .nav-link {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 11px 14px;
-            color: var(--text-muted);
+            gap: 14px;
+            padding: 13px 16px;
+            color: rgba(255,255,255,0.6);
             text-decoration: none;
-            border-radius: 8px;
-            margin-bottom: 4px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            transition: all 0.2s ease;
+            border-radius: 10px;
+            margin-bottom: 2px;
+            font-size: 0.9rem;
+            font-weight: 400;
+            letter-spacing: 0.1px;
+            transition: background 0.18s ease, color 0.18s ease;
+            min-height: 48px;
         }
 
         .nav-link i {
-            width: 20px;
+            width: 22px;
             text-align: center;
-            font-size: 0.95rem;
+            font-size: 1rem;
+            opacity: 0.55;
+            flex-shrink: 0;
+            transition: opacity 0.18s, color 0.18s;
         }
 
         .nav-link:hover {
-            background: rgba(255, 255, 255, 0.04);
-            color: var(--text);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.9);
+        }
+
+        .nav-link:hover i {
+            opacity: 0.9;
         }
 
         .nav-link.active {
-            background: var(--gold-dim);
-            color: var(--gold);
+            background: var(--accent-dim);
+            color: var(--accent);
+            font-weight: 600;
+            border-left: 2px solid var(--accent);
+            padding-left: 14px;
         }
 
+        .nav-link.active i {
+            color: var(--accent);
+            opacity: 1;
+        }
+
+        /* ADMIN BOX */
         .admin-box {
-            margin-top: 10px;
-            padding: 12px;
-            background: rgba(139, 92, 246, 0.08);
+            margin-top: 8px;
+            padding: 10px 8px;
+            background: rgba(139,92,246,0.04);
             border-radius: 10px;
-            border: 1px solid rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139,92,246,0.12);
         }
 
         .admin-box .nav-group-title {
-            color: #a78bfa;
+            color: rgba(139, 92, 246, 0.5);
         }
 
+        .admin-box .nav-group-title::before {
+            background: rgba(139,92,246,0.6);
+        }
+
+        /* FOOTER */
         .user-footer {
-            padding: 16px;
-            border-top: 1px solid rgba(255, 255, 255, 0.06);
-            background: var(--darker-bg);
+            padding: 16px 16px 20px;
+            border-top: 1px solid var(--border);
         }
 
         .user-info {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             margin-bottom: 12px;
         }
 
         .avatar {
             width: 40px;
             height: 40px;
-            background: linear-gradient(135deg, var(--gold), #d97706);
-            border-radius: 10px;
+            background: var(--accent-dim);
+            border: 1px solid rgba(245,166,35,0.25);
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            color: #000;
-            font-size: 1rem;
+            font-weight: 600;
+            color: var(--accent);
+            font-size: 0.95rem;
+            flex-shrink: 0;
         }
 
         .user-name {
-            color: #fff;
-            font-weight: 600;
-            font-size: 0.9rem;
+            color: rgba(255,255,255,0.85);
+            font-weight: 500;
+            font-size: 0.88rem;
+            letter-spacing: 0.2px;
         }
 
         .user-status {
-            color: #22c55e;
-            font-size: 0.7rem;
+            color: rgba(52, 211, 153, 0.8);
+            font-size: 0.65rem;
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 5px;
+            font-weight: 400;
+            margin-top: 2px;
         }
 
         .user-status::before {
             content: '';
             width: 6px;
             height: 6px;
-            background: #22c55e;
+            background: rgba(52, 211, 153, 0.8);
             border-radius: 50%;
         }
 
         .logout-btn {
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             width: 100%;
-            padding: 10px;
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.25);
-            border-radius: 8px;
-            color: #ef4444;
+            padding: 11px;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            color: rgba(255,255,255,0.35);
             text-decoration: none;
-            text-align: center;
             font-size: 0.8rem;
-            font-weight: 600;
+            font-weight: 400;
+            letter-spacing: 0.3px;
             transition: all 0.2s;
         }
 
         .logout-btn:hover {
-            background: rgba(239, 68, 68, 0.2);
-            color: #f87171;
+            background: rgba(239, 68, 68, 0.08);
+            border-color: rgba(239, 68, 68, 0.25);
+            color: #ef4444;
         }
 
         /* MOBİL ELEMANLARI GİZLE */
@@ -304,8 +352,8 @@ if ($can_onay) {
     /* === MOBİL === */
     @media (max-width: 991px) {
         body {
-            padding-top: 60px !important;
-            padding-bottom: 70px !important;
+            padding-top: 56px !important;
+            padding-bottom: 64px !important;
             padding-left: 0 !important;
         }
 
@@ -319,13 +367,15 @@ if ($can_onay) {
             left: 0;
             width: 100%;
             height: 56px;
-            background: var(--dark-bg);
+            background: rgba(0,0,0,0.85);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            backdrop-filter: saturate(180%) blur(20px);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 16px;
+            padding: 0 20px;
             z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid var(--border);
         }
 
         .mobile-header .brand {
@@ -333,26 +383,29 @@ if ($can_onay) {
             align-items: center;
             gap: 8px;
             color: #fff;
-            font-weight: 700;
-            font-size: 1rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
         }
 
         .mobile-header .brand i {
-            color: var(--gold);
-            font-size: 1.2rem;
+            color: var(--accent);
+            font-size: 1rem;
         }
 
         .mobile-header .m-avatar {
-            width: 34px;
-            height: 34px;
-            background: linear-gradient(135deg, var(--gold), #d97706);
-            border-radius: 8px;
+            width: 30px;
+            height: 30px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            color: #000;
-            font-size: 0.85rem;
+            font-weight: 500;
+            color: rgba(255,255,255,0.6);
+            font-size: 0.75rem;
         }
 
         .mobile-nav {
@@ -360,13 +413,15 @@ if ($can_onay) {
             bottom: 0;
             left: 0;
             width: 100%;
-            height: 65px;
-            background: var(--dark-bg);
+            height: 64px;
+            background: rgba(0,0,0,0.9);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            backdrop-filter: saturate(180%) blur(20px);
             display: flex;
             justify-content: space-around;
             align-items: center;
             z-index: 1000;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            border-top: 1px solid var(--border);
             padding-bottom: env(safe-area-inset-bottom);
         }
 
@@ -374,66 +429,69 @@ if ($can_onay) {
             display: flex;
             flex-direction: column;
             align-items: center;
-            color: var(--text-muted);
+            color: rgba(255,255,255,0.35);
             text-decoration: none;
-            font-size: 0.6rem;
-            font-weight: 500;
-            padding: 6px 10px;
+            font-size: 0.55rem;
+            font-weight: 400;
+            padding: 6px 12px;
             border-radius: 10px;
-            transition: all 0.2s;
+            transition: all 0.25s;
+            letter-spacing: 0.5px;
         }
 
         .m-link i {
-            font-size: 1.2rem;
+            font-size: 1.15rem;
             margin-bottom: 3px;
         }
 
         .m-link.active,
         .m-link:hover {
-            color: var(--gold);
-            background: var(--gold-dim);
+            color: var(--accent);
+            background: var(--accent-dim);
         }
 
         .m-link.danger {
-            color: #ef4444;
+            color: rgba(255,255,255,0.25);
         }
 
         .m-link.danger:hover {
-            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.08);
         }
 
         .menu-btn {
             background: none;
             border: none;
-            color: var(--text-muted);
+            color: rgba(255,255,255,0.35);
             display: flex;
             flex-direction: column;
             align-items: center;
-            font-size: 0.6rem;
-            font-weight: 500;
-            padding: 6px 10px;
+            font-size: 0.55rem;
+            font-weight: 400;
+            padding: 6px 12px;
             border-radius: 10px;
             cursor: pointer;
+            letter-spacing: 0.5px;
         }
 
         .menu-btn i {
-            font-size: 1.2rem;
+            font-size: 1.15rem;
             margin-bottom: 3px;
         }
 
         .menu-btn:hover {
-            color: var(--gold);
-            background: var(--gold-dim);
+            color: var(--accent);
+            background: var(--accent-dim);
         }
 
         .menu-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.6);
             z-index: 1100;
             opacity: 0;
             visibility: hidden;
-            transition: all 0.3s;
+            transition: all 0.35s;
         }
 
         .menu-overlay.open {
@@ -446,14 +504,16 @@ if ($can_onay) {
             bottom: 0;
             left: 0;
             width: 100%;
-            max-height: 70vh;
-            background: var(--dark-bg);
-            border-radius: 20px 20px 0 0;
+            max-height: 75vh;
+            background: rgba(10,10,10,0.98);
+            -webkit-backdrop-filter: saturate(180%) blur(30px);
+            backdrop-filter: saturate(180%) blur(30px);
+            border-radius: 16px 16px 0 0;
             z-index: 1110;
             transform: translateY(100%);
-            transition: transform 0.35s ease;
+            transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
             overflow-y: auto;
-            padding: 16px 16px 30px;
+            padding: 12px 16px 30px;
         }
 
         .slide-menu.open {
@@ -461,17 +521,17 @@ if ($can_onay) {
         }
 
         .menu-handle {
-            width: 40px;
+            width: 36px;
             height: 4px;
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.15);
             border-radius: 2px;
-            margin: 0 auto 16px;
+            margin: 4px auto 20px;
         }
 
         .menu-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
+            gap: 8px;
         }
 
         .menu-item {
@@ -479,27 +539,34 @@ if ($can_onay) {
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 16px 8px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 18px 8px;
+            background: transparent;
+            border: 1px solid var(--border);
             border-radius: 12px;
-            color: var(--text-muted);
+            color: rgba(255,255,255,0.45);
             text-decoration: none;
-            font-size: 0.65rem;
-            font-weight: 500;
-            transition: all 0.2s;
+            font-size: 0.6rem;
+            font-weight: 400;
+            letter-spacing: 0.3px;
+            transition: all 0.25s;
         }
 
         .menu-item i {
-            font-size: 1.3rem;
-            margin-bottom: 6px;
+            font-size: 1.2rem;
+            margin-bottom: 8px;
+            opacity: 0.6;
         }
 
         .menu-item:hover,
         .menu-item.active {
-            background: var(--gold-dim);
-            border-color: rgba(245, 166, 35, 0.3);
-            color: var(--gold);
+            background: var(--accent-dim);
+            border-color: rgba(59, 130, 246, 0.2);
+            color: var(--accent);
+        }
+
+        .menu-item:hover i,
+        .menu-item.active i {
+            opacity: 1;
         }
     }
 
@@ -696,15 +763,67 @@ if ($can_onay) {
             </a>
         </div>
 
-        <?php if (navbarModulGoster($baglanti, 'Hammadde Yönetimi') || navbarModulGoster($baglanti, 'Planlama & Takvim') || navbarModulGoster($baglanti, 'Üretim Paneli')) { ?>
+        <?php if (navbarModulGoster($baglanti, 'Hammadde Yönetimi') || navbarModulGoster($baglanti, 'Satın Alma')) { ?>
             <div class="nav-group">
-                <div class="nav-group-title">Üretim</div>
+                <div class="nav-group-title">Hammadde & Kantar</div>
                 <?php if (navbarModulGoster($baglanti, 'Hammadde Yönetimi')) { ?>
                     <a href="hammadde.php" class="nav-link <?php if ($sayfa == 'hammadde.php')
                         echo 'active'; ?>">
-                        <i class="fas fa-truck-loading"></i> Hammadde
+                        <i class="fas fa-truck-loading"></i> Hammadde Kabul
                     </a>
                 <?php } ?>
+                <?php if (navbarModulGoster($baglanti, 'Satın Alma')) { ?>
+                    <a href="satin_alma.php" class="nav-link <?php if ($sayfa == 'satin_alma.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-weight-scale"></i> Kantar & Muhasebe
+                    </a>
+                    <a href="kantar_liste.php" class="nav-link <?php if ($sayfa == 'kantar_liste.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-clipboard-list"></i> Kantar Geçmişi
+                    </a>
+                <?php } ?>
+            </div>
+        <?php } ?>
+
+        <?php if (navbarModulGoster($baglanti, 'Lab Analizleri') || navbarModulGoster($baglanti, 'İzlenebilirlik')) { ?>
+            <div class="nav-group">
+                <div class="nav-group-title">Lab & Kalite</div>
+                <?php if (navbarModulGoster($baglanti, 'Lab Analizleri')) { ?>
+                    <a href="lab_analizleri.php" class="nav-link <?php if ($sayfa == 'lab_analizleri.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-flask"></i> Lab Analiz
+                    </a>
+                <?php } ?>
+                <?php if (navbarModulGoster($baglanti, 'İzlenebilirlik')) { ?>
+                    <a href="izlenebilirlik.php" class="nav-link <?php if ($sayfa == 'izlenebilirlik.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-barcode"></i> İzlenebilirlik
+                    </a>
+                <?php } ?>
+            </div>
+        <?php } ?>
+
+        <?php if (navbarModulGoster($baglanti, 'Silo Yönetimi') || navbarModulGoster($baglanti, 'Hammadde Kodlama')) { ?>
+            <div class="nav-group">
+                <div class="nav-group-title">Silo & Tanımlar</div>
+                <?php if (navbarModulGoster($baglanti, 'Silo Yönetimi')) { ?>
+                    <a href="silo_yonetimi.php" class="nav-link <?php if ($sayfa == 'silo_yonetimi.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-database"></i> Silo Yönetimi
+                    </a>
+                <?php } ?>
+                <?php if (navbarModulGoster($baglanti, 'Hammadde Kodlama')) { ?>
+                    <a href="hammadde_kodlama.php" class="nav-link <?php if ($sayfa == 'hammadde_kodlama.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-tags"></i> Hammadde Kodlama
+                    </a>
+                <?php } ?>
+            </div>
+        <?php } ?>
+
+        <?php if (navbarModulGoster($baglanti, 'Planlama & Takvim') || navbarModulGoster($baglanti, 'Üretim Paneli')) { ?>
+            <div class="nav-group">
+                <div class="nav-group-title">Planlama & Üretim</div>
                 <?php if (navbarModulGoster($baglanti, 'Planlama & Takvim')) { ?>
                     <a href="planlama.php" class="nav-link <?php if ($sayfa == 'planlama.php')
                         echo 'active'; ?>">
@@ -720,9 +839,27 @@ if ($can_onay) {
             </div>
         <?php } ?>
 
+        <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik') || navbarModulGoster($baglanti, 'Stok Takibi')) { ?>
+            <div class="nav-group">
+                <div class="nav-group-title">Depo & Sevkiyat</div>
+                <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
+                    <a href="depo_sevkiyat.php" class="nav-link <?php if ($sayfa == 'depo_sevkiyat.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-boxes-stacked"></i> Depo & Sevk
+                    </a>
+                <?php } ?>
+                <?php if (navbarModulGoster($baglanti, 'Stok Takibi')) { ?>
+                    <a href="malzeme_stok.php" class="nav-link <?php if ($sayfa == 'malzeme_stok.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-cubes"></i> Malzeme Stok
+                    </a>
+                <?php } ?>
+            </div>
+        <?php } ?>
+
         <?php if (navbarModulGoster($baglanti, 'Satış & Siparişler') || navbarModulGoster($baglanti, 'Pazarlama') || navbarModulGoster($baglanti, 'Müşteriler')) { ?>
             <div class="nav-group">
-                <div class="nav-group-title">Satış & Pazarlama</div>
+                <div class="nav-group-title">Satış & Müşteri</div>
                 <?php if (navbarModulGoster($baglanti, 'Müşteriler')) { ?>
                     <a href="musteriler.php" class="nav-link <?php if ($sayfa == 'musteriler.php')
                         echo 'active'; ?>">
@@ -743,54 +880,12 @@ if ($can_onay) {
                     <a href="siparisler.php" class="nav-link <?php if ($sayfa == 'siparisler.php')
                         echo 'active'; ?>">
                         <div class="d-flex justify-content-between w-100 align-items-center">
-                            <span><i class="fas fa-shopping-bag"></i> Siparişler (İdari)</span>
+                            <span><i class="fas fa-shopping-bag"></i> Siparişler</span>
                             <span id="siparisBadge" class="badge bg-danger rounded-pill"
                                 style="<?php echo $siparis_bekleyen_sayisi > 0 ? '' : 'display: none;'; ?>">
                                 <?php echo $siparis_bekleyen_sayisi; ?>
                             </span>
                         </div>
-                    </a>
-                <?php } ?>
-            </div>
-        <?php } ?>
-
-        <?php if (navbarModulGoster($baglanti, 'Satın Alma') || navbarModulGoster($baglanti, 'Sevkiyat & Lojistik') || navbarModulGoster($baglanti, 'Stok Takibi')) { ?>
-            <div class="nav-group">
-                <div class="nav-group-title">Lojistik</div>
-                <?php if (navbarModulGoster($baglanti, 'Satın Alma')) { ?>
-                    <a href="satin_alma.php" class="nav-link <?php if ($sayfa == 'satin_alma.php')
-                        echo 'active'; ?>">
-                        <i class="fas fa-shopping-cart"></i> Kantar & Muhasebe
-                    </a>
-                <?php } ?>
-                <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
-                    <a href="depo_sevkiyat.php" class="nav-link <?php if ($sayfa == 'depo_sevkiyat.php')
-                        echo 'active'; ?>">
-                        <i class="fas fa-boxes-stacked"></i> Depo & Sevk
-                    </a>
-                <?php } ?>
-                <?php if (navbarModulGoster($baglanti, 'Stok Takibi')) { ?>
-                    <a href="malzeme_stok.php" class="nav-link <?php if ($sayfa == 'malzeme_stok.php')
-                        echo 'active'; ?>">
-                        <i class=" fas fa-cubes"></i> Malzeme Stok
-                    </a>
-                <?php } ?>
-            </div>
-        <?php } ?>
-
-        <?php if (navbarModulGoster($baglanti, 'İzlenebilirlik') || navbarModulGoster($baglanti, 'Lab Analizleri')) { ?>
-            <div class="nav-group">
-                <div class="nav-group-title">Kalite</div>
-                <?php if (navbarModulGoster($baglanti, 'İzlenebilirlik')) { ?>
-                    <a href="izlenebilirlik.php" class="nav-link <?php if ($sayfa == 'izlenebilirlik.php')
-                        echo 'active'; ?>">
-                        <i class="fas fa-barcode"></i> İzlenebilirlik
-                    </a>
-                <?php } ?>
-                <?php if (navbarModulGoster($baglanti, 'Lab Analizleri')) { ?>
-                    <a href="lab_analizleri.php" class="nav-link <?php if ($sayfa == 'lab_analizleri.php')
-                        echo 'active'; ?>">
-                        <i class="fas fa-flask"></i> Lab Analiz
                     </a>
                 <?php } ?>
             </div>
@@ -803,24 +898,6 @@ if ($can_onay) {
                     echo 'active'; ?>">
                     <i class="fas fa-tools"></i> Makine Bakım
                 </a>
-            </div>
-        <?php } ?>
-
-        <?php if (navbarModulGoster($baglanti, 'Silo Yönetimi') || navbarModulGoster($baglanti, 'Hammadde Kodlama')) { ?>
-            <div class="nav-group">
-                <div class="nav-group-title">Tanımlar</div>
-                <?php if (navbarModulGoster($baglanti, 'Silo Yönetimi')) { ?>
-                    <a href="silo_yonetimi.php" class="nav-link <?php if ($sayfa == 'silo_yonetimi.php')
-                        echo 'active'; ?>">
-                        <i class="fas fa-database"></i> Silo Yönetimi
-                    </a>
-                <?php } ?>
-                <?php if (navbarModulGoster($baglanti, 'Hammadde Kodlama')) { ?>
-                    <a href="hammadde_kodlama.php" class="nav-link <?php if ($sayfa == 'hammadde_kodlama.php')
-                        echo 'active'; ?>">
-                        <i class="fas fa-tags"></i> Hammadde Kod
-                    </a>
-                <?php } ?>
             </div>
         <?php } ?>
 
@@ -845,6 +922,10 @@ if ($can_onay) {
                     <a href="kullanici_yonetimi.php" class="nav-link <?php if ($sayfa == 'kullanici_yonetimi.php')
                         echo 'active'; ?>">
                         <i class="fas fa-users-gear"></i> Kullanıcılar
+                    </a>
+                    <a href="tv_modu.php" class="nav-link <?php if ($sayfa == 'tv_modu.php')
+                        echo 'active'; ?>" target="_blank">
+                        <i class="fas fa-tv"></i> TV Modu
                     </a>
                 <?php } ?>
             </div>
@@ -941,7 +1022,11 @@ if ($can_onay) {
         <?php if (navbarModulGoster($baglanti, 'Satın Alma')) { ?>
             <a href="satin_alma.php" class="menu-item <?php if ($sayfa == 'satin_alma.php')
                 echo 'active'; ?>">
-                <i class="fas fa-shopping-cart"></i> Kantar & Muhasebe
+                <i class="fas fa-shopping-cart"></i> Kantar
+            </a>
+            <a href="kantar_liste.php" class="menu-item <?php if ($sayfa == 'kantar_liste.php')
+                echo 'active'; ?>">
+                <i class="fas fa-weight-scale"></i> Kantar Geçmişi
             </a>
         <?php } ?>
         <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
@@ -998,6 +1083,10 @@ if ($can_onay) {
                 <a href="kullanici_yonetimi.php" class="menu-item <?php if ($sayfa == 'kullanici_yonetimi.php')
                     echo 'active'; ?>">
                     <i class="fas fa-users"></i> Kullanıcı
+                </a>
+                <a href="tv_modu.php" class="menu-item <?php if ($sayfa == 'tv_modu.php')
+                    echo 'active'; ?>" target="_blank">
+                    <i class="fas fa-tv"></i> TV
                 </a>
             <?php } ?>
         <?php } ?>

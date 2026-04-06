@@ -20,6 +20,23 @@ bakimBildirimleriniKontrolEt($baglanti);
 $mesaj = "";
 $hata = "";
 
+// --- 0. AJAX MAKİNE GEÇMİŞİ ÇEKME ---
+if (isset($_GET["get_history"]) && isset($_GET["makine_id"])) {
+    $m_id = (int) $_GET["makine_id"];
+    $query = $baglanti->prepare("SELECT * FROM bakim_kayitlari WHERE makine_id = ? ORDER BY bakim_tarihi DESC");
+    $query->bind_param("i", $m_id);
+    $query->execute();
+    $result = $query->get_result();
+    $history = [];
+    while ($row = $result->fetch_assoc()) {
+        $row['bakim_tarihi_fmt'] = date('d.m.Y', strtotime($row['bakim_tarihi']));
+        $history[] = $row;
+    }
+    header('Content-Type: application/json');
+    echo json_encode($history);
+    exit;
+}
+
 // --- 1. YENİ MAKİNE EKLEME ---
 if (isset($_POST["makine_ekle"])) {
     $kod = strtoupper(trim($_POST["makine_kodu"]));
@@ -165,6 +182,62 @@ if (isset($_POST["bakim_ekle"])) {
     }
 }
 
+// --- 4.1 BAKIM KAYDI GÜNCELLEME ---
+if (isset($_POST["bakim_guncelle"])) {
+    $kayit_id = (int) $_POST["kayit_id"];
+    $makine_id = (int) $_POST["makine_id"];
+    $tarih = $_POST["bakim_tarihi"];
+    $tur = $_POST["bakim_turu"];
+    $islem = $_POST["yapilan_islem"];
+    $teknisyen = $_POST["teknisyen"];
+
+    // Makine periyodunu al
+    $q_mach = $baglanti->query("SELECT bakim_periyodu FROM makineler WHERE id = $makine_id")->fetch_assoc();
+    $periyot = $q_mach['bakim_periyodu'];
+    $sonraki_bakim = date('Y-m-d', strtotime($tarih . " + $periyot days"));
+
+    $stmt = $baglanti->prepare("UPDATE bakim_kayitlari SET bakim_tarihi = ?, bakim_turu = ?, yapilan_islem = ?, teknisyen = ?, sonraki_bakim = ? WHERE id = ?");
+    $stmt->bind_param("sssssi", $tarih, $tur, $islem, $teknisyen, $sonraki_bakim, $kayit_id);
+
+    if ($stmt->execute()) {
+        // En son bakımı bulup makine tablosunu güncelle (Senkronizasyon)
+        $q_latest = $baglanti->query("SELECT bakim_tarihi, sonraki_bakim FROM bakim_kayitlari WHERE makine_id = $makine_id ORDER BY bakim_tarihi DESC LIMIT 1")->fetch_assoc();
+        if ($q_latest) {
+            $stmt_upd = $baglanti->prepare("UPDATE makineler SET son_bakim_tarihi = ?, sonraki_bakim_tarihi = ? WHERE id = ?");
+            $stmt_upd->bind_param("ssi", $q_latest['bakim_tarihi'], $q_latest['sonraki_bakim'], $makine_id);
+            $stmt_upd->execute();
+        }
+        $mesaj = "✅ Bakım kaydı güncellendi.";
+        systemLogKaydet($baglanti, "UPDATE", "Bakım & Arıza", "Bakım kaydı güncellendi (Kayıt ID: $kayit_id)");
+    } else {
+        $hata = "Hata: " . $baglanti->error;
+    }
+}
+
+// --- 4.2 BAKIM KAYDI SİLME ---
+if (isset($_GET["bakim_sil"])) {
+    $kayit_id = (int) $_GET["bakim_sil"];
+    // Önce makine ID'sini al
+    $q_kayit = $baglanti->query("SELECT makine_id FROM bakim_kayitlari WHERE id = $kayit_id")->fetch_assoc();
+    if ($q_kayit) {
+        $mid = $q_kayit['makine_id'];
+        if ($baglanti->query("DELETE FROM bakim_kayitlari WHERE id = $kayit_id")) {
+            // Makine tablosunu güncelle (En son kalan bakıma göre veya tamamen temizle)
+            $q_prev = $baglanti->query("SELECT bakim_tarihi, sonraki_bakim FROM bakim_kayitlari WHERE makine_id = $mid ORDER BY bakim_tarihi DESC LIMIT 1")->fetch_assoc();
+            if ($q_prev) {
+                $stmt_upd = $baglanti->prepare("UPDATE makineler SET son_bakim_tarihi = ?, sonraki_bakim_tarihi = ? WHERE id = ?");
+                $stmt_upd->bind_param("ssi", $q_prev['bakim_tarihi'], $q_prev['sonraki_bakim'], $mid);
+            } else {
+                $stmt_upd = $baglanti->prepare("UPDATE makineler SET son_bakim_tarihi = NULL, sonraki_bakim_tarihi = NULL WHERE id = ?");
+                $stmt_upd->bind_param("i", $mid);
+            }
+            $stmt_upd->execute();
+            $mesaj = "✅ Bakım kaydı silindi.";
+            systemLogKaydet($baglanti, "DELETE", "Bakım & Arıza", "Bakım kaydı silindi (Kayıt ID: $kayit_id)");
+        }
+    }
+}
+
 // --- 5. LAB MALZEME EKLEME ---
 if (isset($_POST["lab_malzeme_ekle"])) {
     $ad = $baglanti->real_escape_string($_POST["malzeme_adi"]);
@@ -201,7 +274,7 @@ $stats = [
 
 // LİSTELERİ ÇEK
 $makineler = $baglanti->query("SELECT * FROM makineler WHERE aktif = 1 ORDER BY sonraki_bakim_tarihi ASC");
-$gecmis = $baglanti->query("SELECT b.*, m.makine_adi FROM bakim_kayitlari b JOIN makineler m ON b.makine_id = m.id ORDER BY b.bakim_tarihi DESC LIMIT 20");
+$gecmis = $baglanti->query("SELECT b.*, m.makine_adi, m.makine_kodu FROM bakim_kayitlari b JOIN makineler m ON b.makine_id = m.id ORDER BY b.bakim_tarihi DESC LIMIT 20");
 $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY malzeme_adi ASC");
 ?>
 
@@ -391,6 +464,38 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
         .makine-card:focus-within .card-actions {
             opacity: 1;
         }
+
+        .makine-card-header {
+            cursor: pointer;
+        }
+
+        .nav-pills .nav-link {
+            border-radius: 12px;
+            padding: 0.8rem 1.5rem;
+            font-weight: 600;
+            color: #64748b;
+            background-color: #fff;
+            border: 1px solid #e2e8f0;
+            margin-right: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-pills .nav-link.active {
+            background-color: #0d6efd;
+            color: #fff;
+            border-color: #0d6efd;
+            box-shadow: 0 4px 6px -1px rgba(13, 110, 253, 0.2);
+        }
+
+        .nav-pills .nav-link:hover:not(.active) {
+            background-color: #f1f5f9;
+        }
+
+        #historyTable thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
     </style>
 </head>
 
@@ -422,49 +527,57 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
             </div>
         </div>
 
-        <!-- STATS -->
-        <div class="row g-4 mb-4">
-            <div class="col-md-4">
-                <div class="card card-stats shadow-sm border-danger">
-                    <div class="card-body d-flex align-items-center">
-                        <div class="icon bg-light-danger text-danger me-3"><i class="fas fa-exclamation-triangle"></i>
+        <!-- TABS NAVIGATION -->
+        <ul class="nav nav-pills mb-4" id="pills-tab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="pills-makine-tab" data-bs-toggle="pill" data-bs-target="#pills-makine" type="button" role="tab"><i class="fas fa-th-large me-2"></i>Makine Durumları</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="pills-gecmis-tab" data-bs-toggle="pill" data-bs-target="#pills-gecmis" type="button" role="tab"><i class="fas fa-history me-2"></i>Son Bakım İşlemleri & Lab</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="pills-tabContent">
+            <!-- TAB 1: MAKİNE DURUMLARI -->
+            <div class="tab-pane fade show active" id="pills-makine" role="tabpanel">
+                <!-- STATS -->
+                <div class="row g-4 mb-4">
+                    <div class="col-md-4">
+                        <div class="card card-stats shadow-sm border-danger">
+                            <div class="card-body d-flex align-items-center">
+                                <div class="icon bg-light-danger text-danger me-3"><i class="fas fa-exclamation-triangle"></i>
+                                </div>
+                                <div>
+                                    <h6 class="text-muted mb-0">Geciken Bakımlar</h6>
+                                    <h3 class="fw-bold mb-0 text-danger"><?php echo $stats['gecikmis']; ?></h3>
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <h6 class="text-muted mb-0">Geciken Bakımlar</h6>
-                            <h3 class="fw-bold mb-0 text-danger"><?php echo $stats['gecikmis']; ?></h3>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card card-stats shadow-sm border-warning">
+                            <div class="card-body d-flex align-items-center">
+                                <div class="icon bg-light-warning text-warning me-3"><i class="fas fa-clock"></i></div>
+                                <div>
+                                    <h6 class="text-muted mb-0">7 Gün İçinde Olacak</h6>
+                                    <h3 class="fw-bold mb-0 text-warning"><?php echo $stats['yaklasan']; ?></h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card card-stats shadow-sm border-primary">
+                            <div class="card-body d-flex align-items-center">
+                                <div class="icon bg-light-primary text-primary me-3"><i class="fas fa-industry"></i></div>
+                                <div>
+                                    <h6 class="text-muted mb-0">Toplam Aktif Makine</h6>
+                                    <h3 class="fw-bold mb-0 text-primary"><?php echo $stats['toplam']; ?></h3>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card card-stats shadow-sm border-warning">
-                    <div class="card-body d-flex align-items-center">
-                        <div class="icon bg-light-warning text-warning me-3"><i class="fas fa-clock"></i></div>
-                        <div>
-                            <h6 class="text-muted mb-0">7 Gün İçinde Olacak</h6>
-                            <h3 class="fw-bold mb-0 text-warning"><?php echo $stats['yaklasan']; ?></h3>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card card-stats shadow-sm border-primary">
-                    <div class="card-body d-flex align-items-center">
-                        <div class="icon bg-light-primary text-primary me-3"><i class="fas fa-industry"></i></div>
-                        <div>
-                            <h6 class="text-muted mb-0">Toplam Aktif Makine</h6>
-                            <h3 class="fw-bold mb-0 text-primary"><?php echo $stats['toplam']; ?></h3>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-
-
-        <div class="row">
-            <!-- MAKİNE LİSTESİ (KARTLAR) -->
-            <div class="col-lg-8">
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-header bg-white border-bottom py-3 d-flex flex-column gap-3">
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -532,7 +645,7 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
                                         data-search="<?php echo htmlspecialchars($arama_metni); ?>">
                                         <div class="makine-card shadow-sm <?php echo $durum_class; ?>">
                                             <div class="mach-status-line <?php echo $line_class; ?>"></div>
-                                            <div class="p-3 flex-grow-1">
+                                            <div class="p-3 flex-grow-1 makine-card-header" onclick="loadMachineHistory(<?php echo $m['id']; ?>, '<?php echo addslashes($m['makine_adi']); ?>')">
                                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                                     <span class="badge bg-light text-dark border"><i
                                                             class="fas fa-barcode me-1 text-muted"></i><?php echo htmlspecialchars($m['makine_kodu']); ?></span>
@@ -569,13 +682,9 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
                                                         <span><i class="fas fa-sync-alt me-1"></i>Periyot:</span>
                                                         <span><?php echo $m['bakim_periyodu']; ?> Gün</span>
                                                     </div>
-                                                    <?php if (!empty($m['lokasyon'])): ?>
-                                                        <div class="d-flex justify-content-between mt-1 align-items-center">
-                                                            <span><i class="fas fa-map-marker-alt me-1"></i>Detay:</span>
-                                                            <span class="text-truncate" style="max-width: 100px;"
-                                                                title="<?php echo htmlspecialchars($m['lokasyon']); ?>"><?php echo htmlspecialchars($m['lokasyon']); ?></span>
-                                                        </div>
-                                                    <?php endif; ?>
+                                                    <div class="text-center mt-2 pt-2 border-top">
+                                                        <small class="text-primary"><i class="fas fa-history me-1"></i>Bakım Geçmişini Gör</small>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div class="bg-white border-top p-2 d-flex justify-content-around card-actions">
@@ -604,88 +713,100 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
                 </div>
             </div>
 
-            <!-- SON BAKIM KAYITLARI -->
-            <div class="col-lg-4">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-white border-bottom py-3">
-                        <h5 class="mb-0 fw-bold">Son Bakım İşlemleri</h5>
+            <!-- TAB 2: SON BAKIM İŞLEMLERİ & LAB -->
+            <div class="tab-pane fade" id="pills-gecmis" role="tabpanel">
+                <div class="row">
+                    <!-- SON BAKIM KAYITLARI -->
+                    <div class="col-lg-7">
+                        <div class="card border-0 shadow-sm mb-4">
+                            <div class="card-header bg-white border-bottom py-3">
+                                <h5 class="mb-0 fw-bold">Son Bakım İşlemleri</h5>
+                            </div>
+                            <div class="card-body p-0">
+                                <ul class="list-group list-group-flush">
+                                    <?php
+                                    if ($gecmis && $gecmis->num_rows > 0) {
+                                        while ($g = $gecmis->fetch_assoc()) {
+                                            ?>
+                                            <li class="list-group-item list-group-item-action py-3" style="cursor: pointer;" onclick="loadMachineHistory(<?php echo $g['makine_id']; ?>, '<?php echo addslashes($g['makine_adi']); ?>')">
+                                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                                    <strong class="text-dark"><?php echo htmlspecialchars($g['makine_adi']); ?> <small class="text-muted">(<?php echo htmlspecialchars($g['makine_kodu']); ?>)</small></strong>
+                                                    <span class="badge bg-soft-info text-info rounded-pill"
+                                                        style="font-size: 0.65rem;"><?php echo date('d.m.Y', strtotime($g['bakim_tarihi'])); ?></span>
+                                                </div>
+                                                <div class="small text-muted mb-2"><?php echo htmlspecialchars($g['yapilan_islem']); ?>
+                                                </div>
+                                                <div class="d-flex justify-content-between align-items-center small">
+                                                    <span class="text-primary font-monospace" style="font-size: 0.7rem;"><i
+                                                            class="fas fa-user-cog me-1"></i><?php echo htmlspecialchars($g['teknisyen']); ?></span>
+                                                    <div class="d-flex gap-1 align-items-center">
+                                                        <button class="btn btn-sm btn-light p-1 px-2 border" title="Düzenle" 
+                                                            onclick="event.stopPropagation(); bakimKaydiDuzenleModalAc(<?php echo htmlspecialchars(json_encode($g)); ?>)">
+                                                            <i class="fas fa-edit text-primary" style="font-size: 0.7rem;"></i>
+                                                        </button>
+                                                        <span class="badge <?php echo $g['bakim_turu'] == 'Arıza' ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'; ?> px-2 py-1"><?php echo $g['bakim_turu']; ?></span>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        <?php }
+                                    } else {
+                                        echo "<li class='list-group-item text-center p-4 text-muted'>Geçmiş kayıt bulunamadı.</li>";
+                                    } ?>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body p-0">
-                        <ul class="list-group list-group-flush">
-                            <?php
-                            if ($gecmis && $gecmis->num_rows > 0) {
-                                while ($g = $gecmis->fetch_assoc()) {
-                                    ?>
-                                    <li class="list-group-item py-3">
-                                        <div class="d-flex justify-content-between align-items-start mb-1">
-                                            <strong class="text-dark"><?php echo htmlspecialchars($g['makine_adi']); ?></strong>
-                                            <span class="badge bg-soft-info text-info rounded-pill"
-                                                style="font-size: 0.65rem;"><?php echo date('d.m.Y', strtotime($g['bakim_tarihi'])); ?></span>
-                                        </div>
-                                        <div class="small text-muted mb-2"><?php echo htmlspecialchars($g['yapilan_islem']); ?>
-                                        </div>
-                                        <div class="d-flex justify-content-between align-items-center small">
-                                            <span class="text-primary font-monospace" style="font-size: 0.7rem;"><i
-                                                    class="fas fa-user-cog me-1"></i><?php echo htmlspecialchars($g['teknisyen']); ?></span>
-                                            <span
-                                                class="badge <?php echo $g['bakim_turu'] == 'Arıza' ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'; ?> px-2 py-1"><?php echo $g['bakim_turu']; ?></span>
-                                        </div>
-                                    </li>
-                                <?php }
-                            } else {
-                                echo "<li class='list-group-item text-center p-4 text-muted'>Geçmiş kayıt bulunamadı.</li>";
-                            } ?>
-                        </ul>
-                    </div>
-                </div>
 
-                <!-- LABORATUVAR MALZEMELERİ -->
-                <div class="card border-0 shadow-sm mt-4">
-                    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0 fw-bold"><i class="fas fa-flask text-info me-2"></i>Lab Malzeme Stokları</h5>
-                        <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#labMalzemeModal">
-                            <i class="fas fa-plus me-1"></i>Ekle
-                        </button>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0" style="font-size: 0.85rem;">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Malzeme</th>
-                                        <th>Stok</th>
-                                        <th>Alan</th>
-                                        <th class="text-end px-3">İşlem</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if ($lab_malzemeler && $lab_malzemeler->num_rows > 0): ?>
-                                        <?php while($lm = $lab_malzemeler->fetch_assoc()): 
-                                            $kritik = $lm['miktar'] <= $lm['kritik_seviye'];
-                                        ?>
-                                        <tr>
-                                            <td>
-                                                <strong><?php echo htmlspecialchars($lm['malzeme_adi']); ?></strong>
-                                                <?php if($kritik): ?>
-                                                    <i class="fas fa-exclamation-circle text-danger ms-1" title="Kritik Seviye!"></i>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td class="<?php echo $kritik ? 'text-danger fw-bold' : ''; ?>">
-                                                <?php echo $lm['miktar'] . " " . $lm['birim']; ?>
-                                            </td>
-                                            <td class="text-muted"><?php echo htmlspecialchars($lm['kullanim_alani']); ?></td>
-                                            <td class="text-end px-3">
-                                                <a href="?lab_malzeme_sil=<?php echo $lm['id']; ?>" class="text-danger" onclick="return confirm('Silmek istediğinize emin misiniz?')">
-                                                    <i class="fas fa-trash"></i>
-                                                </a>
-                                            </td>
-                                        </tr>
-                                        <?php endwhile; ?>
-                                    <?php else: ?>
-                                        <tr><td colspan="4" class="text-center py-4 text-muted">Kayıt yok.</td></tr>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
+                    <!-- LABORATUVAR MALZEMELERİ -->
+                    <div class="col-lg-5">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0 fw-bold"><i class="fas fa-flask text-info me-2"></i>Lab Malzeme Stokları</h5>
+                                <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#labMalzemeModal">
+                                    <i class="fas fa-plus me-1"></i>Ekle
+                                </button>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover mb-0" style="font-size: 0.85rem;">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Malzeme</th>
+                                                <th>Stok</th>
+                                                <th>Alan</th>
+                                                <th class="text-end px-3">İşlem</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php if ($lab_malzemeler && $lab_malzemeler->num_rows > 0): ?>
+                                                <?php while($lm = $lab_malzemeler->fetch_assoc()): 
+                                                    $kritik = $lm['miktar'] <= $lm['kritik_seviye'];
+                                                ?>
+                                                <tr>
+                                                    <td>
+                                                        <strong><?php echo htmlspecialchars($lm['malzeme_adi']); ?></strong>
+                                                        <?php if($kritik): ?>
+                                                            <i class="fas fa-exclamation-circle text-danger ms-1" title="Kritik Seviye!"></i>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="<?php echo $kritik ? 'text-danger fw-bold' : ''; ?>">
+                                                        <?php echo $lm['miktar'] . " " . $lm['birim']; ?>
+                                                    </td>
+                                                    <td class="text-muted"><?php echo htmlspecialchars($lm['kullanim_alani']); ?></td>
+                                                    <td class="text-end px-3">
+                                                        <a href="?lab_malzeme_sil=<?php echo $lm['id']; ?>" class="text-danger" onclick="return confirm('Silmek istediğinize emin misiniz?')">
+                                                            <i class="fas fa-trash"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                                <?php endwhile; ?>
+                                            <?php else: ?>
+                                                <tr><td colspan="4" class="text-center py-4 text-muted">Kayıt yok.</td></tr>
+                                            <?php endif; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -959,48 +1080,94 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
         </div>
     </div>
 
-    <!-- LAB MALZEME EKLEME MODAL -->
-    <div class="modal fade" id="labMalzemeModal" tabindex="-1">
+    <!-- MAKİNE GEÇMİŞİ MODAL -->
+    <div class="modal fade" id="machineHistoryModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold" id="historyModalTitle">Makine Bakım Geçmişi</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div id="historyLoading" class="text-center p-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Yükleniyor...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Kayıtlar getiriliyor...</p>
+                    </div>
+                    <div id="historyEmpty" class="text-center p-5 d-none">
+                        <i class="fas fa-info-circle fs-2 text-muted mb-3"></i>
+                        <p class="text-muted mb-0">Bu makineye ait henüz bakım kaydı bulunamadı.</p>
+                    </div>
+                    <div id="historyTableContainer" class="d-none">
+                        <div class="table-responsive" style="max-height: 400px;">
+                            <table class="table table-hover mb-0" id="historyTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-4">Tarih</th>
+                                        <th>Tür</th>
+                                        <th>Yapılan İşlem</th>
+                                        <th>Teknisyen</th>
+                                        <th class="text-end pe-4">İşlem</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                    <!-- AJAX ile dolacak -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 p-3 bg-light">
+                    <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Kapat</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- BAKIM KAYDI DÜZENLEME MODAL -->
+    <div class="modal fade" id="bakimKaydiDuzenleModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content border-0 shadow-lg">
                 <form method="post">
-                    <div class="modal-header bg-info text-white">
-                        <h5 class="modal-title fw-bold">Lab Malzemesi Ekle</h5>
+                    <input type="hidden" name="kayit_id" id="edit_kayit_id">
+                    <input type="hidden" name="makine_id" id="edit_kayit_makine_id">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title fw-bold">Bakım Kaydını Düzenle</h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body p-4">
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted">Malzeme Adı</label>
-                            <input type="text" name="malzeme_adi" class="form-control border-0 bg-light" placeholder="Örn: Sülfürik Asit" required>
-                        </div>
                         <div class="row g-3">
                             <div class="col-6 mb-3">
-                                <label class="form-label small fw-bold text-muted">Miktar</label>
-                                <input type="number" step="0.01" name="miktar" class="form-control border-0 bg-light" required>
+                                <label class="form-label small fw-bold text-muted">Bakım Tarihi</label>
+                                <input type="date" name="bakim_tarihi" id="edit_kayit_tarih" class="form-control border-0 bg-light" required>
                             </div>
                             <div class="col-6 mb-3">
-                                <label class="form-label small fw-bold text-muted">Birim</label>
-                                <select name="birim" class="form-select border-0 bg-light">
-                                    <option value="Litre">Litre</option>
-                                    <option value="Kg">Kg</option>
-                                    <option value="Gram">Gram</option>
-                                    <option value="Adet">Adet</option>
-                                    <option value="Paket">Paket</option>
+                                <label class="form-label small fw-bold text-muted">Bakım Türü</label>
+                                <select name="bakim_turu" id="edit_kayit_turu" class="form-select border-0 bg-light">
+                                    <option value="Periyodik">Periyodik Bakım</option>
+                                    <option value="Arıza">Arıza Onarım</option>
+                                    <option value="Kontrol">Genel Kontrol</option>
                                 </select>
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted">Kullanım Alanı</label>
-                            <input type="text" name="kullanim_alani" class="form-control border-0 bg-light" placeholder="Örn: Protein Analizi">
+                            <label class="form-label small fw-bold text-muted">Yapılan İşlemler</label>
+                            <textarea name="yapilan_islem" id="edit_kayit_islem" class="form-control border-0 bg-light" rows="3" required></textarea>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted">Kritik Stok Seviyesi</label>
-                            <input type="number" step="0.01" name="kritik_seviye" class="form-control border-0 bg-light" value="1.00">
+                            <label class="form-label small fw-bold text-muted">Sorumlu Teknisyen</label>
+                            <input type="text" name="teknisyen" id="edit_kayit_teknisyen" class="form-control border-0 bg-light" required>
                         </div>
                     </div>
-                    <div class="modal-footer border-0 p-4 pt-0">
-                        <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">İptal</button>
-                        <button type="submit" name="lab_malzeme_ekle" class="btn btn-info text-white px-4">Kaydet</button>
+                    <div class="modal-footer border-0 p-4 pt-0 d-flex justify-content-between">
+                        <button type="button" class="btn btn-outline-danger px-3" onclick="bakimKaydiSil()">
+                            <i class="fas fa-trash-alt me-1"></i>Sil
+                        </button>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">İptal</button>
+                            <button type="submit" name="bakim_guncelle" class="btn btn-primary px-4">Kaydet</button>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -1127,6 +1294,75 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
             document.getElementById('edit_periyot').value = data.bakim_periyodu;
             const modal = new bootstrap.Modal(document.getElementById('duzenleModal'));
             modal.show();
+        }
+
+        function loadMachineHistory(id, name) {
+            const modal = new bootstrap.Modal(document.getElementById('machineHistoryModal'));
+            document.getElementById('historyModalTitle').innerText = name + " - Bakım Geçmişi";
+            
+            // UI Reset
+            $('#historyLoading').removeClass('d-none');
+            $('#historyEmpty').addClass('d-none');
+            $('#historyTableContainer').addClass('d-none');
+            $('#historyTableBody').empty();
+
+            modal.show();
+
+            $.getJSON('bakim.php', { get_history: 1, makine_id: id }, function(data) {
+                $('#historyLoading').addClass('d-none');
+                
+                if (data.length === 0) {
+                    $('#historyEmpty').removeClass('d-none');
+                } else {
+                    $('#historyTableContainer').removeClass('d-none');
+                    data.forEach(function(item) {
+                        let row = `<tr>
+                            <td class="ps-4"><strong>${item.bakim_tarihi_fmt}</strong></td>
+                            <td><span class="badge ${item.bakim_turu === 'Arıza' ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'}">${item.bakim_turu}</span></td>
+                            <td style="font-size: 0.85rem;">${item.yapilan_islem}</td>
+                            <td class="text-muted" style="font-size: 0.8rem;">${item.teknisyen}</td>
+                            <td class="text-end pe-4">
+                                <button class="btn btn-sm btn-outline-primary border-0 p-1" title="Düzenle" 
+                                    onclick='bakimKaydiDuzenleModalAc(${JSON.stringify(item)})'>
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>`;
+                        $('#historyTableBody').append(row);
+                    });
+                }
+            }).fail(function() {
+                $('#historyLoading').html('<div class="text-danger"><i class="fas fa-exclamation-circle me-2"></i>Veriler alınırken bir hata oluştu.</div>');
+            });
+        }
+
+        function bakimKaydiDuzenleModalAc(data) {
+            document.getElementById('edit_kayit_id').value = data.id;
+            document.getElementById('edit_kayit_makine_id').value = data.makine_id;
+            document.getElementById('edit_kayit_tarih').value = data.bakim_tarihi;
+            document.getElementById('edit_kayit_turu').value = data.bakim_turu;
+            document.getElementById('edit_kayit_islem').value = data.yapilan_islem;
+            document.getElementById('edit_kayit_teknisyen').value = data.teknisyen;
+            
+            const modal = new bootstrap.Modal(document.getElementById('bakimKaydiDuzenleModal'));
+            modal.show();
+        }
+
+        function bakimKaydiSil() {
+            const id = document.getElementById('edit_kayit_id').value;
+            Swal.fire({
+                title: 'Emin misiniz?',
+                text: 'Bu bakım kaydı kalıcı olarak silinecektir.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                confirmButtonText: 'Evet, Sil',
+                cancelButtonText: 'İptal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = `bakim.php?bakim_sil=${id}`;
+                }
+            });
         }
     </script>
 

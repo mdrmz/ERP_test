@@ -66,6 +66,7 @@ if (isset($_POST["referans_guncelle"])) {
 if (isset($_POST["analiz_kaydet"])) {
     $parti_no = mysqli_real_escape_string($baglanti, $_POST["parti_no"]);
     $hammadde_giris_id = !empty($_POST["hammadde_giris_id"]) ? (int) $_POST["hammadde_giris_id"] : null;
+    $hammadde_id = !empty($_POST["hammadde_id"]) ? (int) $_POST["hammadde_id"] : null;
     $protein_sql = (isset($_POST["protein"]) && $_POST["protein"] !== '') ? floatval($_POST["protein"]) : "NULL";
     $gluten_sql = (isset($_POST["gluten"]) && $_POST["gluten"] !== '') ? floatval($_POST["gluten"]) : "NULL";
     $index_sql = (isset($_POST["index_degeri"]) && $_POST["index_degeri"] !== '') ? intval($_POST["index_degeri"]) : "NULL";
@@ -77,44 +78,65 @@ if (isset($_POST["analiz_kaydet"])) {
     $sertlik = (isset($_POST["sertlik"]) && $_POST["sertlik"] !== '') ? floatval($_POST["sertlik"]) : 0;
     $nisasta = (isset($_POST["nisasta"]) && $_POST["nisasta"] !== '') ? floatval($_POST["nisasta"]) : 0;
     $doker_orani = (isset($_POST["doker_orani"]) && $_POST["doker_orani"] !== '') ? floatval($_POST["doker_orani"]) : 0;
-    $laborant = $_SESSION["kadi"];
+    // Laborant ismini al (Oturumdaki kullanıcı adı, yoksa user_id üzerinden bir fallback)
+    $laborant = !empty($_SESSION["kadi"]) ? $_SESSION["kadi"] : (!empty($_SESSION["user_id"]) ? "UserID:".$_SESSION["user_id"] : "Sistem");
+    
     $protein_msg = is_numeric($protein_sql) ? $protein_sql : '-';
     $gluten_msg = is_numeric($gluten_sql) ? $gluten_sql : '-';
 
     // NULL kontrolu
     $hg_sql = $hammadde_giris_id ? $hammadde_giris_id : "NULL";
 
-    $sql = "INSERT INTO lab_analizleri (parti_no, hammadde_giris_id, protein, gluten, index_degeri, sedimantasyon, gecikmeli_sedimantasyon, hektolitre, nem, fn, sertlik, nisasta, doker_orani, laborant) 
-            VALUES ('$parti_no', $hg_sql, $protein_sql, $gluten_sql, $index_sql, $sedim_sql, $gecikmeli_sedim_sql, $hektolitre, $nem, $fn, $sertlik, $nisasta, $doker_orani, '$laborant')";
+    // Analiz durum belirleme (Hepsi dolu mu?)
+    $tamam_mi = ($protein_sql !== "NULL" && $gluten_sql !== "NULL" && 
+                 $index_sql !== "NULL" && $sedim_sql !== "NULL" && 
+                 $hektolitre > 0 && $nem > 0 && $fn > 0 && 
+                 $sertlik > 0 && $nisasta > 0);
+    $analiz_durumu = $tamam_mi ? 2 : 1;
 
-    if ($baglanti->query($sql)) {
-        $yeni_analiz_id = $baglanti->insert_id;
-
-        // === SYSTEM LOG KAYDI ===
-        systemLogKaydet(
-            $baglanti,
-            'INSERT',
-            'Lab Analizleri',
-            "Yeni analiz kaydi: Parti No: $parti_no | Protein: $protein_msg% | Gluten: $gluten_msg%"
-        );
-
-        // === PATRON BILDIRIMI ===
-        bildirimOlustur(
-            $baglanti,
-            'analiz_tamamlandi',
-            "Lab Analizi Tamamlandi: $parti_no",
-            "Protein: $protein_msg% | Gluten: $gluten_msg% | Laborant: $laborant",
-            1, // Patron rol_id
-            null,
-            'lab_analizleri',
-            $yeni_analiz_id,
-            'lab_analizleri.php'
-        );
-
-        header("Location: lab_analizleri.php?msg=ok");
-        exit;
+    // Benzersiz parti_no kontrolü
+    // Eğer düzenlemiyorsak ve bu parti no zaten sistemde var mı diye kontrol edebiliriz
+    $chk = $baglanti->query("SELECT id FROM lab_analizleri WHERE parti_no='$parti_no'");
+    if ($chk && $chk->num_rows > 0) {
+        $hata = "Hata: Girilen '$parti_no' parti numarası sistemde kayıtlı. Lütfen farklı bir numara tanımlayın.";
     } else {
-        $hata = "Kayit hatasi: " . $baglanti->error;
+        // Hammadde Seçildiyse (Araç girişi onaylandı)
+        if ($hammadde_giris_id && $hammadde_id) {
+            $baglanti->query("UPDATE hammadde_girisleri SET hammadde_id=$hammadde_id, parti_no='$parti_no', analiz_yapildi=$analiz_durumu WHERE id=$hammadde_giris_id");
+        }
+
+        $sql = "INSERT INTO lab_analizleri (parti_no, hammadde_giris_id, protein, gluten, index_degeri, sedimantasyon, gecikmeli_sedimantasyon, hektolitre, nem, fn, sertlik, nisasta, doker_orani, laborant) 
+                VALUES ('$parti_no', $hg_sql, $protein_sql, $gluten_sql, $index_sql, $sedim_sql, $gecikmeli_sedim_sql, $hektolitre, $nem, $fn, $sertlik, $nisasta, $doker_orani, '$laborant')";
+
+        if ($baglanti->query($sql)) {
+            $yeni_analiz_id = $baglanti->insert_id;
+
+            // === SYSTEM LOG KAYDI ===
+            systemLogKaydet(
+                $baglanti,
+                'INSERT',
+                'Lab Analizleri',
+                "Yeni analiz kaydi: Parti No: $parti_no | Protein: $protein_msg% | Gluten: $gluten_msg%"
+            );
+
+            // === PATRON BILDIRIMI ===
+            bildirimOlustur(
+                $baglanti,
+                'analiz_tamamlandi',
+                "Lab Analizi Tamamlandi: $parti_no",
+                "Protein: $protein_msg% | Gluten: $gluten_msg% | Laborant: $laborant",
+                1, // Patron rol_id
+                null,
+                'lab_analizleri',
+                $yeni_analiz_id,
+                'lab_analizleri.php'
+            );
+
+            header("Location: lab_analizleri.php?msg=ok");
+            exit;
+        } else {
+            $hata = "Kayit hatasi: " . $baglanti->error;
+        }
     }
 }
 
@@ -139,6 +161,13 @@ if (isset($_POST["analiz_guncelle"])) {
     // NULL kontrolu
     $hg_sql = $hammadde_giris_id ? $hammadde_giris_id : "NULL";
 
+    // Tamamlanma Durumu Belirleme
+    $tamam_mi = ($protein_sql !== "NULL" && $gluten_sql !== "NULL" && 
+                 $index_sql !== "NULL" && $sedim_sql !== "NULL" && 
+                 $hektolitre > 0 && $nem > 0 && $fn > 0 && 
+                 $sertlik > 0 && $nisasta > 0);
+    $analiz_durumu = $tamam_mi ? 2 : 1;
+
     $sql = "UPDATE lab_analizleri SET 
             parti_no = '$parti_no',
             hammadde_giris_id = $hg_sql,
@@ -156,6 +185,11 @@ if (isset($_POST["analiz_guncelle"])) {
             WHERE id = $id";
 
     if ($baglanti->query($sql)) {
+        // Eger bir araca bagliysa durumunu burada da guncelleyelim
+        if ($hammadde_giris_id) {
+            $baglanti->query("UPDATE hammadde_girisleri SET parti_no='$parti_no', analiz_yapildi=$analiz_durumu WHERE id=$hammadde_giris_id");
+        }
+
         // === SYSTEM LOG KAYDI ===
         systemLogKaydet(
             $baglanti,
@@ -211,9 +245,17 @@ $analizler = $baglanti->query("SELECT la.*, hg.arac_plaka, hg.tedarikci, h.ad as
 $hammadde_girisleri = $baglanti->query("SELECT hg.id, hg.parti_no, hg.arac_plaka, hg.tedarikci, hg.tarih, h.ad as hammadde_adi 
                                         FROM hammadde_girisleri hg 
                                         LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id
-                                        LEFT JOIN lab_analizleri la ON hg.parti_no = la.parti_no
-                                        WHERE la.id IS NULL
+                                        LEFT JOIN lab_analizleri la ON hg.id = la.hammadde_giris_id
+                                        WHERE la.id IS NULL AND hg.analiz_yapildi = 0
                                         ORDER BY hg.tarih DESC LIMIT 50");
+
+$tum_hammaddeler = $baglanti->query("SELECT id, ad FROM hammaddeler ORDER BY ad ASC");
+$hammaddeler_arr = [];
+if ($tum_hammaddeler) {
+    while ($hm = $tum_hammaddeler->fetch_assoc()) {
+        $hammaddeler_arr[] = $hm;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -587,34 +629,42 @@ $hammadde_girisleri = $baglanti->query("SELECT hg.id, hg.parti_no, hg.arac_plaka
                 <div class="modal-body">
                     <form method="post" id="yeniAnalizForm">
                         <div class="row mb-3">
-                            <div class="col-md-12">
-                                <label class="form-label required-field">Hammadde Parti No Seçin</label>
-                                <select name="parti_no" class="form-select" required id="parti_select">
-                                    <option value="">-- Hangi hammadde partisini analiz ediyorsunuz? --</option>
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label required-field">Hammadde Girişi Seçin (Araç Plaka/Firma)</label>
+                                <select name="hammadde_giris_id" class="form-select" id="hammadde_giris_select">
+                                    <option value="">-- Üretim Numunesi / Serbest Analiz --</option>
                                     <?php
                                     if ($hammadde_girisleri && $hammadde_girisleri->num_rows > 0) {
                                         $hammadde_girisleri->data_seek(0);
                                         while ($hg = $hammadde_girisleri->fetch_assoc()) {
-                                            // Sadece parti_no olan kayitlari goster
-                                            if (!empty($hg["parti_no"])) {
-                                                ?>
-                                                <option value="<?php echo htmlspecialchars($hg["parti_no"]); ?>"
-                                                    data-hgid="<?php echo $hg["id"]; ?>">
-                                                    <?php echo htmlspecialchars($hg["parti_no"]) . " - " . $hg["arac_plaka"] . " (" . htmlspecialchars($hg["hammadde_adi"] ?? 'Bilinmiyor') . ") - " . date("d.m.Y H:i", strtotime($hg["tarih"])); ?>
-                                                </option>
-                                                <?php
-                                            }
+                                    ?>
+                                        <option value="<?php echo htmlspecialchars($hg["id"]); ?>">
+                                            <?php echo $hg["arac_plaka"] . " / " . ($hg["tedarikci"] ?? '') . " - " . date("d.m.Y H:i", strtotime($hg["tarih"])); ?>
+                                        </option>
+                                    <?php
                                         }
                                     }
                                     ?>
                                 </select>
-                                <small class="text-muted">Sadece analiz girilmemiş hammadde girişlerindeki parti
-                                    numaraları gösterilir</small>
+                                <small class="text-muted">Kantar'dan girişi yapılmış ama henüz analizi girilmemiş araçlar listelenir.</small>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required-field">Hammadde Cinsi</label>
+                                <select name="hammadde_id" class="form-select" id="hammadde_cinsi_select" required>
+                                    <option value="">-- Cins Seçin --</option>
+                                    <?php foreach ($hammaddeler_arr as $hm) { ?>
+                                        <option value="<?php echo $hm['id']; ?>"><?php echo htmlspecialchars($hm['ad']); ?></option>
+                                    <?php } ?>
+                                </select>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label required-field">Parti No / Numune Kodu</label>
+                                <input type="text" name="parti_no" id="parti_no_input" class="form-control" required placeholder="Hammadde cinsini seçin...">
+                                <small class="text-muted" id="parti_no_uyari">Parti numarası otomatik oluşturulur, müdahale edilebilir.</small>
                             </div>
                         </div>
-
-                        <!-- Secilen partinin hammadde_giris_id'si otomatik set edilecek -->
-                        <input type="hidden" name="hammadde_giris_id" id="hidden_hgid">
 
                         <hr>
                         <h6 class="text-muted mb-3"><i class="fas fa-microscope"></i> Analiz Değerleri</h6>
@@ -1073,11 +1123,27 @@ $hammadde_girisleri = $baglanti->query("SELECT hg.id, hg.parti_no, hg.arac_plaka
                 });
             }
 
-            // Parti secildiginde hammadde_giris_id'yi otomatik doldur
-            $('#parti_select').on('change', function () {
-                var selectedOption = $(this).find('option:selected');
-                var hgid = selectedOption.data('hgid');
-                $('#hidden_hgid').val(hgid || '');
+            // Hammadde cinsi seçildiğinde AJAX ile otomatik parti numarası (numune kodu) getir
+            $('#hammadde_cinsi_select').on('change', function () {
+                var hammaddeId = $(this).val();
+                if (hammaddeId) {
+                    $.ajax({
+                        url: 'ajax/ajax_get_parti_no.php',
+                        type: 'GET',
+                        data: { hammadde_id: hammaddeId },
+                        success: function (response) {
+                            if (response && response.trim() !== '') {
+                                $('#parti_no_input').val(response.trim());
+                                $('#parti_no_input').removeClass('is-invalid');
+                            }
+                        },
+                        error: function () {
+                            console.error("Parti numarası çekerken hata oluştu.");
+                        }
+                    });
+                } else {
+                    $('#parti_no_input').val('');
+                }
             });
 
             // Form validasyonu
