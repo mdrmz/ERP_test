@@ -165,28 +165,29 @@ function fixTurkceMangle($str)
                                     $row['surucu'] = fixTurkceMangle($row['surucu']);
                                     $row['plaka_norm'] = fixTurkceMangle($row['plaka_norm']);
                                     $row['urun'] = fixTurkceMangle($row['urun']);
+                                    $row['kaynak_il'] = fixTurkceMangle($row['kaynak_il'] ?? '');
+                                    $row['hedef_il'] = fixTurkceMangle($row['hedef_il'] ?? '');
 
                                     $ham_veri = $row['ham_veri'] ?? '';
-                                    // Remove any leftover #* or *# or newlines just in case
                                     $hamVeriClean = trim($ham_veri, "#*\t\n\r ");
                                     $parts = explode('*', $hamVeriClean);
 
-                                    $plaka_ham = $parts[0] ?? $row['plaka_raw'];
+                                    $plaka_ham = $row['plaka_raw'] ?: ($parts[0] ?? '');
                                     $plakalar = explode('-', $plaka_ham);
                                     $plaka_arac = $plakalar[0] ?? '';
                                     $plaka_dorse = $plakalar[1] ?? '';
 
-                                    $cikis_tarihi = $parts[1] ?? '';
-                                    $cikis_saati = $parts[2] ?? '';
+                                    $cikis_tarihi = !empty($row['tartim_tarihi']) ? date('d.m.Y', strtotime($row['tartim_tarihi'])) : '';
+                                    $cikis_saati = !empty($row['tartim_saati']) ? (string) $row['tartim_saati'] : '';
                                     $giris_tarihi = $parts[4] ?? '';
                                     $giris_saati = $parts[5] ?? '';
 
-                                    $tartim_1 = $parts[7] ?? number_format($row['tara_kg'], 0, '', '');
-                                    $tartim_2 = $parts[6] ?? number_format($row['brut_kg'], 0, '', '');
+                                    $tartim_1 = (int) ($row['tara_kg'] ?? 0);
+                                    $tartim_2 = (int) ($row['brut_kg'] ?? 0);
 
-                                    $urun = $parts[9] ?? $row['urun'];
-                                    $gelis_yeri = $parts[11] ?? $row['kaynak_il'];
-                                    $gidis_yeri = $parts[12] ?? $row['hedef_il'];
+                                    $urun = $row['urun'] ?? '';
+                                    $gelis_yeri = $row['kaynak_il'] ?? '';
+                                    $gidis_yeri = $row['hedef_il'] ?? '';
 
                                     $telefon = isset($parts[15]) ? trim($parts[15]) : '';
                                     if (empty($telefon) && isset($parts[14])) {
@@ -203,8 +204,8 @@ function fixTurkceMangle($str)
                                         'giris_saati' => $giris_saati,
                                         'cikis_tarihi' => $cikis_tarihi,
                                         'cikis_saati' => $cikis_saati,
-                                        'tartim_1' => intval($tartim_1),
-                                        'tartim_2' => intval($tartim_2),
+                                        'tartim_1' => $tartim_1,
+                                        'tartim_2' => $tartim_2,
                                         'net' => $row['net_kg'],
                                         'firma' => $row['firma'],
                                         'urun' => fixTurkceMangle($urun),
@@ -218,7 +219,9 @@ function fixTurkceMangle($str)
 
                                     // Display strings
                                     $displayGiris = ($giris_tarihi || $giris_saati) ? trim($giris_tarihi . ' ' . $giris_saati) : '-';
-                                    $displayCikis = ($cikis_tarihi || $cikis_saati) ? trim($cikis_tarihi . ' ' . $cikis_saati) : '-';
+                                    $displayCikis = ($row['tartim_zamani'])
+                                        ? date('d.m.Y H:i:s', strtotime($row['tartim_zamani']))
+                                        : (($cikis_tarihi || $cikis_saati) ? trim($cikis_tarihi . ' ' . $cikis_saati) : '-');
 
                                     echo "<tr>";
                                     echo "<td>{$row['id']}</td>";

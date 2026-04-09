@@ -18,31 +18,46 @@ $istekPlaka = isset($_GET['plaka']) ? trim((string) $_GET['plaka']) : '';
 if ($istekPlaka === '') {
     echo json_encode([
         'basari' => false,
+        'hata_kodu' => 'PLAKA_BOS',
         'hata' => 'Plaka bilgisi bos olamaz.'
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 // 1) SQL-first: plaka icin en guncel kayit
-$dbResult = kantarGetLatestByPlate($baglanti, $istekPlaka);
+$liveResult = kantarFetchParseAndStore($baglanti, $ip, $port, $file, $istekPlaka);
+if (!empty($liveResult['ok'])) {
+    $matchMode = (string) ($liveResult['match_mode'] ?? '');
+    echo json_encode(kantarRowToApi($liveResult['row'], 'live', $matchMode), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// 2) Canli veride eslesme olmazsa SQL cache'e dus
+$dbResult = kantarGetLatestByPlate($baglanti, $istekPlaka, true);
 if (!empty($dbResult['ok']) && !empty($dbResult['found'])) {
-    echo json_encode(kantarRowToApi($dbResult['row'], 'sql'), JSON_UNESCAPED_UNICODE);
+    $matchMode = (string) ($dbResult['match_mode'] ?? '');
+    echo json_encode(kantarRowToApi($dbResult['row'], 'sql', $matchMode), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-// 2) SQL'de yoksa canli fallback ile cek, parse et, dedup ile DB'ye yaz
-$fallback = kantarFetchParseAndStore($baglanti, $ip, $port, $file, $istekPlaka);
-if (!empty($fallback['ok'])) {
-    echo json_encode(kantarRowToApi($fallback['row'], 'fallback'), JSON_UNESCAPED_UNICODE);
-    exit;
-}
+$errorCode = (string) ($liveResult['error_code'] ?? '');
+$err = (string) ($liveResult['error'] ?? 'Kantar verisi alinamadi.');
 
-$err = (string) ($fallback['error'] ?? 'Kantar verisi alinamadi.');
-if (!empty($dbResult['error'])) {
+if ($err === '' || $errorCode === 'PLAKA_ESLESMEDI') {
+    $err = 'Bu plakaya ait uygun bir kantar kaydi bulunamadi.';
+}
+if ($errorCode === 'KARARSIZ_VERI') {
+    $err = 'Kantar verisi o an kararsiz geldi, lutfen tekrar deneyin.';
+}
+if ($errorCode === '' && !empty($dbResult['error_code'])) {
+    $errorCode = (string) $dbResult['error_code'];
+}
+if (!empty($dbResult['error']) && $errorCode === '') {
     $err .= ' SQL: ' . (string) $dbResult['error'];
 }
 
 echo json_encode([
     'basari' => false,
+    'hata_kodu' => $errorCode,
     'hata' => $err
 ], JSON_UNESCAPED_UNICODE);

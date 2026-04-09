@@ -28,15 +28,28 @@ switch ($action) {
         // Bildirim + Sipariş + Onay sayaçları
         $bildirim_count = (int) bildirimSayisi($baglanti);
         $can_siparis = (bool) modulYetkisiVar($baglanti, 'Satış & Siparişler', 'okuma');
+        $can_satin_alma = (bool) modulYetkisiVar($baglanti, 'Satın Alma', 'okuma');
         $can_onay = ((($_SESSION['rol_adi'] ?? '') === 'Patron' || (int) ($_SESSION['rol_id'] ?? 0) === 1) || (bool) onayYetkisiVar($baglanti));
 
         $siparis_count = 0;
+        $satin_alma_count = 0;
         $onay_count = 0;
 
         if ($can_siparis) {
             $siparis_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM siparisler WHERE durum = 'Bekliyor'");
             if ($siparis_result && $siparis_row = $siparis_result->fetch_assoc()) {
                 $siparis_count = (int) ($siparis_row['cnt'] ?? 0);
+            }
+        }
+
+        if ($can_satin_alma) {
+            if (function_exists('satinAlmaBekleyenHammaddeSayisi')) {
+                $satin_alma_count = (int) satinAlmaBekleyenHammaddeSayisi($baglanti);
+            } else {
+                $satin_alma_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM hammadde_kabul_akisi WHERE asama = 'satina_bekliyor'");
+                if ($satin_alma_result && $satin_alma_row = $satin_alma_result->fetch_assoc()) {
+                    $satin_alma_count = (int) ($satin_alma_row['cnt'] ?? 0);
+                }
             }
         }
 
@@ -59,8 +72,10 @@ switch ($action) {
         echo json_encode([
             'bildirim_count' => $bildirim_count,
             'siparis_count' => $siparis_count,
+            'satin_alma_count' => $satin_alma_count,
             'onay_count' => $onay_count,
             'can_siparis' => $can_siparis,
+            'can_satin_alma' => $can_satin_alma,
             'can_onay' => $can_onay
         ]);
         break;

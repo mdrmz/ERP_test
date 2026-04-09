@@ -67,16 +67,20 @@ while (true) {
     $result = kantarFetchParseAndStore($baglanti, $ip, $port, $file);
 
     if (!$result['ok']) {
-        kpLog("HATA: " . ($result['error'] ?? 'Bilinmeyen hata'));
+        $code = (string) ($result['error_code'] ?? 'GENEL');
+        kpLog("HATA({$code}): " . ($result['error'] ?? 'Bilinmeyen hata'));
     } else {
         $row = $result['row'];
         $id = (int) ($row['id'] ?? 0);
         $plaka = (string) ($row['plaka_raw'] ?? '-');
         $net = (float) ($row['net_kg'] ?? 0);
         $yeni = !empty($result['store']['yeni']);
+        $guncellendi = !empty($result['store']['guncellendi']);
 
         if ($yeni) {
             kpLog("KAYDEDILDI | id={$id} | plaka={$plaka} | net={$net} kg");
+        } elseif ($guncellendi) {
+            kpLog("GUNCELLENDI | id={$id} | plaka={$plaka} | net={$net} kg");
         } else {
             kpLog("SKIP(DUP)  | id={$id} | plaka={$plaka} | net={$net} kg");
         }

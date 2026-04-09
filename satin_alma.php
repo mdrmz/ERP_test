@@ -15,6 +15,195 @@ $mesaj = "";
 $hata = "";
 $kantar_okuma_kolon_var = false;
 
+if (!function_exists('formatBirimFiyatGoster')) {
+    function formatBirimFiyatGoster($deger)
+    {
+        if ($deger === null || $deger === '') {
+            return '-';
+        }
+        return number_format((float) $deger, 2, ',', '.');
+    }
+}
+
+if (!function_exists('xlsxKolonAdi')) {
+    function xlsxKolonAdi($sira)
+    {
+        $harf = '';
+        while ($sira > 0) {
+            $kalan = ($sira - 1) % 26;
+            $harf = chr(65 + $kalan) . $harf;
+            $sira = (int) (($sira - $kalan - 1) / 26);
+        }
+        return $harf;
+    }
+}
+
+if (!function_exists('xlsxSatirXmlUret')) {
+    function xlsxSatirXmlUret($satirNo, array $satirVeri)
+    {
+        $hucreler = '';
+        $kolonNo = 1;
+        foreach ($satirVeri as $deger) {
+            $hucreRef = xlsxKolonAdi($kolonNo) . $satirNo;
+            $deger = trim((string) $deger);
+            $deger = str_replace(["\r", "\n", "\t"], ' ', $deger);
+            $deger = htmlspecialchars($deger, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+            $hucreler .= '<c r="' . $hucreRef . '" t="inlineStr"><is><t>' . $deger . '</t></is></c>';
+            $kolonNo++;
+        }
+        return '<row r="' . $satirNo . '">' . $hucreler . '</row>';
+    }
+}
+
+if (!function_exists('xlsxDosyaOlustur')) {
+    function xlsxDosyaOlustur($dosyaYolu, array $satirlar)
+    {
+        if (!class_exists('ZipArchive')) {
+            return false;
+        }
+
+        $sheetRowsXml = '';
+        $satirNo = 1;
+        foreach ($satirlar as $satir) {
+            $sheetRowsXml .= xlsxSatirXmlUret($satirNo, $satir);
+            $satirNo++;
+        }
+
+        $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . '<sheetData>' . $sheetRowsXml . '</sheetData>'
+            . '</worksheet>';
+
+        $contentTypesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            . '<Default Extension="xml" ContentType="application/xml"/>'
+            . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+            . '</Types>';
+
+        $relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            . '</Relationships>';
+
+        $workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            . 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            . '<sheets><sheet name="Rapor" sheetId="1" r:id="rId1"/></sheets>'
+            . '</workbook>';
+
+        $workbookRelsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            . '</Relationships>';
+
+        $stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
+            . '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
+            . '<borders count="1"><border/></borders>'
+            . '<cellStyleXfs count="1"><xf/></cellStyleXfs>'
+            . '<cellXfs count="1"><xf xfId="0"/></cellXfs>'
+            . '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+            . '</styleSheet>';
+
+        $zip = new ZipArchive();
+        if ($zip->open($dosyaYolu, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            return false;
+        }
+
+        $zip->addFromString('[Content_Types].xml', $contentTypesXml);
+        $zip->addFromString('_rels/.rels', $relsXml);
+        $zip->addFromString('xl/workbook.xml', $workbookXml);
+        $zip->addFromString('xl/_rels/workbook.xml.rels', $workbookRelsXml);
+        $zip->addFromString('xl/worksheets/sheet1.xml', $sheetXml);
+        $zip->addFromString('xl/styles.xml', $stylesXml);
+
+        $zip->close();
+        return true;
+    }
+}
+
+$excel_export_istek = isset($_GET['excel_export']) && $_GET['excel_export'] === '1';
+if ($excel_export_istek) {
+    $export_adet = isset($_GET['export_adet']) ? (int) $_GET['export_adet'] : 10;
+    $export_adet = max(1, min(500, $export_adet));
+
+    $excel_sorgu = "
+        SELECT a.id, a.guncelleme_tarihi, a.kantar_net_kg, a.birim_fiyat, a.odeme_tarihi,
+               hg.arac_plaka, hg.tedarikci, hg.parti_no,
+               h.hammadde_kodu, h.ad AS hammadde_adi,
+               u.kadi AS onaylayan_kadi
+        FROM hammadde_kabul_akisi a
+        LEFT JOIN hammadde_girisleri hg ON a.hammadde_giris_id = hg.id
+        LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id
+        LEFT JOIN users u ON a.onaylayan_user_id = u.id
+        WHERE a.asama = 'tamamlandi'
+          AND a.onay_durum = 'onaylandi'
+        ORDER BY a.guncelleme_tarihi DESC
+        LIMIT $export_adet
+    ";
+
+    $excel_sonuc = $baglanti->query($excel_sorgu);
+    if (!$excel_sonuc) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo "Rapor olusturulurken hata olustu.";
+        exit;
+    }
+
+    $satirlar = [];
+    $satirlar[] = [
+        'Tarih',
+        'Plaka',
+        'Hammadde Kodu',
+        'Hammadde',
+        'Tedarikci',
+        'Parti No',
+        'Miktar (kg)',
+        'Birim Fiyat',
+        'Odeme Tarihi',
+        'Islem Yapan'
+    ];
+
+    while ($row = $excel_sonuc->fetch_assoc()) {
+        $satirlar[] = [
+            !empty($row['guncelleme_tarihi']) ? date('d.m.Y H:i', strtotime($row['guncelleme_tarihi'])) : '-',
+            $row['arac_plaka'] ?? '-',
+            $row['hammadde_kodu'] ?? '-',
+            $row['hammadde_adi'] ?? '-',
+            $row['tedarikci'] ?? '-',
+            $row['parti_no'] ?? '-',
+            number_format((float) ($row['kantar_net_kg'] ?? 0), 0, ',', '.'),
+            $row['birim_fiyat'] !== null ? number_format((float) $row['birim_fiyat'], 2, ',', '.') : '-',
+            !empty($row['odeme_tarihi']) ? date('d.m.Y', strtotime($row['odeme_tarihi'])) : '-',
+            $row['onaylayan_kadi'] ?? 'Sistem'
+        ];
+    }
+
+    $tmpXlsx = tempnam(sys_get_temp_dir(), 'erp_xlsx_');
+    if ($tmpXlsx === false || !xlsxDosyaOlustur($tmpXlsx, $satirlar)) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo "XLSX olusturulamadi. Sunucuda ZipArchive uzantisi aktif olmalidir.";
+        exit;
+    }
+
+    $dosya_adi = "hammadde_alim_raporu_" . date('Y-m-d_H-i-s') . ".xlsx";
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $dosya_adi . '"');
+    header('Content-Length: ' . filesize($tmpXlsx));
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
+    readfile($tmpXlsx);
+    @unlink($tmpXlsx);
+    exit;
+}
+
 $kolon_kontrol = @$baglanti->query("SHOW COLUMNS FROM hammadde_kabul_akisi LIKE 'kantar_okuma_id'");
 if ($kolon_kontrol && $kolon_kontrol->num_rows > 0) {
     $kantar_okuma_kolon_var = true;
@@ -167,7 +356,7 @@ $hammadde_alim_bekleyenler = $baglanti->query("
     LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id
     LEFT JOIN lab_analizleri la ON la.hammadde_giris_id = hg.id
     WHERE a.asama = 'satina_bekliyor'
-    ORDER BY a.olusturma_tarihi DESC
+    ORDER BY hg.tarih DESC, a.id DESC
 ");
 
 $hammadde_alim_gecmisi = $baglanti->query("
@@ -179,7 +368,6 @@ $hammadde_alim_gecmisi = $baglanti->query("
     LEFT JOIN users u ON a.onaylayan_user_id = u.id
     WHERE a.asama = 'tamamlandi' AND (a.onaylayan_user_id IS NOT NULL OR a.onay_durum = 'satinalma_red')
     ORDER BY a.guncelleme_tarihi DESC
-    LIMIT 20
 ");
 
 $bekleyen_talep_sayisi = $baglanti->query("SELECT COUNT(*) as cnt FROM satin_alma_talepleri WHERE onay_durum = 'bekliyor'")->fetch_assoc()['cnt'];
@@ -268,7 +456,7 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
         }
 
         .nav-pills .nav-link {
-            color: var(--text-muted);
+            color: #64748b;
             font-weight: 500;
             border-radius: 12px;
             padding: 10px 20px;
@@ -292,7 +480,8 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
 
         .table thead th {
             background: #f8fafc;
-            color: var(--text-muted);
+            color: #64748b !important;
+            opacity: 1;
             font-weight: 600;
             text-transform: uppercase;
             font-size: 0.7rem;
@@ -304,6 +493,43 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
         .table tbody td {
             padding: 1.25rem 1rem;
             border-bottom: 1px solid #f1f5f9;
+        }
+
+        .action-col {
+            text-align: center !important;
+            white-space: nowrap;
+            width: 1%;
+        }
+
+        .table-action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn-table-action {
+            font-size: 0.8rem;
+            padding: 0.35rem 0.7rem;
+            font-weight: 600;
+        }
+
+        .meta-info-badge {
+            font-size: 0.82rem !important;
+            font-weight: 600;
+        }
+
+        .analiz-values-row {
+            display: flex;
+            gap: 0.4rem;
+            align-items: center;
+            flex-wrap: nowrap;
+        }
+
+        .analiz-value-badge {
+            font-size: 0.82rem !important;
+            font-weight: 600;
+            white-space: nowrap;
         }
 
         /* --- Status Badges --- */
@@ -497,22 +723,22 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                 role="tabpanel">
                 <div class="card border-0 shadow-sm overflow-hidden">
                     <div class="table-responsive p-3">
-                        <table class="table table-hover align-middle mb-0">
+                        <table id="hammaddeBekleyenlerTablo" class="table table-hover align-middle mb-0">
                             <thead>
                                 <tr>
                                     <th>Tarih / Plaka</th>
                                     <th>Hammadde / Tedarikçi</th>
-                                    <th>Analiz Değerleri</th>
+                                    <th>Birim Fiyat / Ödeme Tarihi</th>
                                     <th>Kantar Net</th>
                                     <th>Durum</th>
-                                    <th class="text-end">İşlem</th>
+                                    <th class="action-col">İşlem</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if ($hammadde_alim_bekleyenler->num_rows > 0): ?>
                                     <?php while ($row = $hammadde_alim_bekleyenler->fetch_assoc()): ?>
                                         <tr>
-                                            <td>
+                                            <td data-order="<?php echo (int) strtotime((string) ($row["giris_tarihi"] ?? '')); ?>">
                                                 <div class="small text-muted mb-1">
                                                     <?php echo date("d.m.Y H:i", strtotime($row["giris_tarihi"])); ?>
                                                 </div>
@@ -525,38 +751,30 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                                 <div class="small text-muted">
                                                     <?php echo htmlspecialchars($row["tedarikci"] . (!empty($row["parti_no"]) ? " (Parti: " . $row["parti_no"] . ")" : "")); ?>
                                                 </div>
-                                                <div class="small mt-1">
-                                                    <span class="badge bg-light text-dark">
-                                                        Birim Fiyat: <?php echo $row["birim_fiyat"] !== null ? number_format((float) $row["birim_fiyat"], 4, ',', '.') : '-'; ?>
-                                                    </span>
-                                                    <span class="badge bg-light text-dark">
-                                                        Ödeme: <?php echo !empty($row["odeme_tarihi"]) ? date("d.m.Y", strtotime($row["odeme_tarihi"])) : '-'; ?>
-                                                    </span>
-                                                </div>
                                             </td>
                                             <td>
-                                                <div class="d-flex gap-2 small">
-                                                    <span class="badge bg-light text-dark">P:
-                                                        <?php echo $row["lab_protein"] ?? '-'; ?></span>
-                                                    <span class="badge bg-light text-dark">G:
-                                                        <?php echo $row["lab_gluten"] ?? '-'; ?></span>
-                                                    <span class="badge bg-light text-dark">N:
-                                                        <?php echo $row["lab_nem"] ?? '-'; ?></span>
+                                                <div class="d-flex flex-column gap-1">
+                                                    <span class="badge bg-light text-dark meta-info-badge">
+                                                        Birim Fiyat: <?php echo formatBirimFiyatGoster($row["birim_fiyat"] ?? null); ?>
+                                                    </span>
+                                                    <span class="badge bg-light text-dark meta-info-badge">
+                                                        Ödeme: <?php echo !empty($row["odeme_tarihi"]) ? date("d.m.Y", strtotime($row["odeme_tarihi"])) : '-'; ?>
+                                                    </span>
                                                 </div>
                                             </td>
                                             <td><span
                                                     class="fw-bold text-primary"><?php echo number_format($row["kantar_net_kg"] ?? 0, 0, ',', '.'); ?>
                                                     kg</span></td>
                                             <td><span class="badge-status status-satina">SATIN ALMA BEKLİYOR</span></td>
-                                            <td class="text-end">
-                                                <div class="d-flex justify-content-end gap-2">
+                                            <td class="action-col">
+                                                <div class="table-action-buttons">
                                                     <button type="button"
-                                                        class="btn btn-success btn-sm rounded-pill px-3 fw-bold"
+                                                        class="btn btn-success btn-sm rounded-pill btn-table-action"
                                                         onclick="kantarModalAc(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars($row['arac_plaka']); ?>', '<?php echo htmlspecialchars($row['hammadde_adi']); ?>', '<?php echo htmlspecialchars($row['tedarikci']); ?>')">
-                                                        <i class="fas fa-balance-scale me-1"></i> Alımı Onayla (Kantar)
+                                                        <i class="fas fa-balance-scale me-1"></i> Kantar Onayla
                                                     </button>
                                                     <button type="button"
-                                                        class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-bold"
+                                                        class="btn btn-outline-danger btn-sm rounded-pill btn-table-action"
                                                         onclick="hammaddeRed(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars($row['arac_plaka']); ?>')">
                                                         <i class="fas fa-times-circle me-1"></i> Reddet
                                                     </button>
@@ -564,13 +782,6 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                             </td>
                                         </tr>
                                     <?php endwhile; ?>
-                                <?php else: ?>
-                                    <tr>
-                                        <td colspan="6" class="text-center py-5 text-muted">
-                                            <i class="fas fa-check-circle fa-3x mb-3 opacity-25"></i>
-                                            <p class="mb-0">Bekleyen hammadde alım onayı bulunmuyor.</p>
-                                        </td>
-                                    </tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -583,7 +794,7 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                 role="tabpanel">
                 <div class="card border-0 shadow-sm overflow-hidden">
                     <div class="table-responsive p-3">
-                        <table class="table table-hover align-middle mb-0">
+                        <table id="malzemeTalepleriTablo" class="table table-hover align-middle mb-0">
                             <thead>
                                 <tr>
                                     <th>Tarih</th>
@@ -591,10 +802,11 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                     <th>Malzeme / Miktar</th>
                                     <th>Aciliyet</th>
                                     <th>Durum</th>
-                                    <th class="text-end">İşlem</th>
+                                    <th class="action-col">İşlem</th>
                                 </tr>
                             </thead>
                             <tbody>
+                                <?php $talep_modal_html = ''; ?>
                                 <?php if ($talepler->num_rows > 0): ?>
                                     <?php while ($row = $talepler->fetch_assoc()): ?>
                                         <tr>
@@ -641,9 +853,9 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                                     <?php echo strtoupper($row["onay_durum"]); ?>
                                                 </span>
                                             </td>
-                                            <td class="text-end">
+                                            <td class="action-col">
                                                 <?php if ($row["onay_durum"] == 'bekliyor'): ?>
-                                                    <button class="btn btn-outline-primary btn-sm rounded-pill px-3"
+                                                    <button class="btn btn-outline-primary btn-sm rounded-pill btn-table-action"
                                                         data-bs-toggle="modal"
                                                         data-bs-target="#talepModali<?php echo $row["id"]; ?>">
                                                         <i class="fas fa-cog me-1"></i> Yönet
@@ -653,7 +865,7 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                                         <input type="hidden" name="talep_id" value="<?php echo $row["id"]; ?>">
                                                         <input type="hidden" name="yeni_durum" value="alindi">
                                                         <button type="submit" name="durum_guncelle"
-                                                            class="btn btn-outline-success btn-sm rounded-pill px-3">
+                                                            class="btn btn-outline-success btn-sm rounded-pill btn-table-action">
                                                             <i class="fas fa-box-open me-1"></i> Teslim Alındı
                                                         </button>
                                                     </form>
@@ -661,71 +873,84 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                             </td>
                                         </tr>
 
-                                        <!-- Talep Yönetim Modali -->
-                                        <div class="modal fade" id="talepModali<?php echo $row["id"]; ?>" tabindex="-1">
-                                            <div class="modal-dialog">
-                                                <div class="modal-content border-0 shadow">
-                                                    <div class="modal-header">
-                                                        <h5 class="modal-title fw-bold text-dark">Talep Yönetimi
-                                                            #<?php echo $row["id"]; ?></h5>
-                                                        <button type="button" class="btn-close"
-                                                            data-bs-dismiss="modal"></button>
-                                                    </div>
-                                                    <div class="modal-body p-4">
-                                                        <div class="mb-4">
-                                                            <label class="small text-muted text-uppercase fw-bold mb-2">Talep
-                                                                Detayı</label>
-                                                            <div class="p-3 bg-light rounded-3">
-                                                                <strong><?php echo $row["talep_eden"]; ?></strong> ·
-                                                                <?php echo $row["miktar"] . " " . $row["birim"] . " " . $mlz_ad; ?>
-                                                            </div>
+                                        <?php if ($row["onay_durum"] == 'bekliyor'):
+                                            ob_start(); ?>
+                                            <div class="modal fade" id="talepModali<?php echo $row["id"]; ?>" tabindex="-1">
+                                                <div class="modal-dialog">
+                                                    <div class="modal-content border-0 shadow">
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title fw-bold text-dark">Talep Yönetimi
+                                                                #<?php echo $row["id"]; ?></h5>
+                                                            <button type="button" class="btn-close"
+                                                                data-bs-dismiss="modal"></button>
                                                         </div>
-                                                        <form method="post">
-                                                            <input type="hidden" name="talep_id"
-                                                                value="<?php echo $row["id"]; ?>">
+                                                        <div class="modal-body p-4">
                                                             <div class="mb-4">
-                                                                <label class="form-label fw-bold">Yönetici Notu</label>
-                                                                <textarea name="yonetici_notu"
-                                                                    class="form-control border-focus-primary" rows="3"
-                                                                    placeholder="Sipariş verildi, depodan teslim edilecek vb."></textarea>
+                                                                <label class="small text-muted text-uppercase fw-bold mb-2">Talep
+                                                                    Detayı</label>
+                                                                <div class="p-3 bg-light rounded-3">
+                                                                    <strong><?php echo $row["talep_eden"]; ?></strong> ·
+                                                                    <?php echo $row["miktar"] . " " . $row["birim"] . " " . $mlz_ad; ?>
+                                                                </div>
                                                             </div>
-                                                            <div class="d-flex gap-3">
-                                                                <button type="submit" name="durum_guncelle" value="reddedildi"
-                                                                    class="btn btn-outline-danger flex-fill py-3 fw-bold rounded-3">
-                                                                    <i class="fas fa-times me-1"></i> REDDET
-                                                                    <input type="hidden" name="yeni_durum" value="reddedildi"
-                                                                        id="red_val_<?php echo $row["id"]; ?>">
-                                                                </button>
-                                                                <button type="submit" name="durum_guncelle" value="onaylandi"
-                                                                    class="btn btn-primary flex-fill py-3 fw-bold rounded-3"
-                                                                    onclick="document.getElementById('red_val_<?php echo $row["id"]; ?>').value='onaylandi'">
-                                                                    <i class="fas fa-check me-1"></i> ONAYLA
-                                                                </button>
-                                                            </div>
-                                                        </form>
+                                                            <form method="post">
+                                                                <input type="hidden" name="talep_id"
+                                                                    value="<?php echo $row["id"]; ?>">
+                                                                <div class="mb-4">
+                                                                    <label class="form-label fw-bold">Yönetici Notu</label>
+                                                                    <textarea name="yonetici_notu"
+                                                                        class="form-control border-focus-primary" rows="3"
+                                                                        placeholder="Sipariş verildi, depodan teslim edilecek vb."></textarea>
+                                                                </div>
+                                                                <div class="d-flex gap-3">
+                                                                    <button type="submit" name="durum_guncelle" value="reddedildi"
+                                                                        class="btn btn-outline-danger flex-fill py-3 fw-bold rounded-3">
+                                                                        <i class="fas fa-times me-1"></i> REDDET
+                                                                        <input type="hidden" name="yeni_durum" value="reddedildi"
+                                                                            id="red_val_<?php echo $row["id"]; ?>">
+                                                                    </button>
+                                                                    <button type="submit" name="durum_guncelle" value="onaylandi"
+                                                                        class="btn btn-primary flex-fill py-3 fw-bold rounded-3"
+                                                                        onclick="document.getElementById('red_val_<?php echo $row["id"]; ?>').value='onaylandi'">
+                                                                        <i class="fas fa-check me-1"></i> ONAYLA
+                                                                    </button>
+                                                                </div>
+                                                            </form>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                            <?php $talep_modal_html .= ob_get_clean(); ?>
+                                        <?php endif; ?>
                                     <?php endwhile; ?>
-                                <?php else: ?>
-                                    <tr>
-                                        <td colspan="6" class="text-center py-4 text-muted">Talep kaydı bulunamadı.</td>
-                                    </tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
                     </div>
                 </div>
+                <?php echo $talep_modal_html; ?>
             </div>
         </div>
 
         <!-- HAMMADDE İŞLEM GEÇMİŞİ -->
         <div class="mt-4">
             <div class="card border-0 shadow-sm overflow-hidden">
-                <div class="card-header bg-white py-3 border-bottom-0 d-flex align-items-center">
-                    <i class="fas fa-history me-2 text-secondary"></i>
-                    <h5 class="mb-0 fw-bold">Son Hammadde Alım İşlemleri</h5>
+                <div class="card-header bg-white py-3 border-bottom-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div class="d-flex align-items-center">
+                        <i class="fas fa-history me-2 text-secondary"></i>
+                        <h5 class="mb-0 fw-bold">Son Hammadde Alım İşlemleri</h5>
+                    </div>
+                    <form method="get" class="d-flex align-items-center gap-2 mb-0">
+                        <input type="hidden" name="tab" value="hammadde">
+                        <input type="hidden" name="excel_export" value="1">
+                        <label for="export_adet" class="small text-muted mb-0">Son</label>
+                        <input type="number" name="export_adet" id="export_adet" min="1" max="500" value="10"
+                            class="form-control form-control-sm" style="width: 86px;">
+                        <span class="small text-muted">kayit</span>
+                        <button type="submit" class="btn btn-sm btn-outline-success">
+                            <i class="fas fa-file-excel me-1"></i> Excel Export
+                        </button>
+                    </form>
                 </div>
                 <div class="table-responsive p-3">
                     <table id="hammaddeGecmisTablo" class="table table-hover align-middle mb-0"
@@ -758,10 +983,10 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                                 <?php echo htmlspecialchars($row["tedarikci"] . (!empty($row["parti_no"]) ? " (Parti: " . $row["parti_no"] . ")" : "")); ?>
                                             </div>
                                             <div class="small mt-1">
-                                                <span class="badge bg-light text-dark">
-                                                    Birim Fiyat: <?php echo $row["birim_fiyat"] !== null ? number_format((float) $row["birim_fiyat"], 4, ',', '.') : '-'; ?>
+                                                <span class="badge bg-light text-dark meta-info-badge">
+                                                    Birim Fiyat: <?php echo formatBirimFiyatGoster($row["birim_fiyat"] ?? null); ?>
                                                 </span>
-                                                <span class="badge bg-light text-dark">
+                                                <span class="badge bg-light text-dark meta-info-badge">
                                                     Ödeme: <?php echo !empty($row["odeme_tarihi"]) ? date("d.m.Y", strtotime($row["odeme_tarihi"])) : '-'; ?>
                                                 </span>
                                             </div>
@@ -800,11 +1025,6 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                         </td>
                                     </tr>
                                 <?php endwhile; ?>
-                            <?php else: ?>
-                                <tr>
-                                    <td colspan="6" class="text-center py-4 text-muted small">Son hammadde alım işlemi
-                                        bulunmuyor.</td>
-                                </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
@@ -977,9 +1197,27 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                 "emptyTable": "Gösterilecek veri bulunmuyor"
             };
 
-            $('#hammaddeBekleyenlerTablo').DataTable({ language: dtLang, order: [[0, 'desc']], pageLength: 10 });
-            $('#malzemeTalepleriTablo').DataTable({ language: dtLang, order: [[0, 'desc']], pageLength: 10 });
-            $('#hammaddeGecmisTablo').DataTable({ language: dtLang, order: [[0, 'desc']], pageLength: 10 });
+            $('#hammaddeBekleyenlerTablo').DataTable({
+                language: dtLang,
+                order: [[0, 'desc']],
+                pageLength: 10,
+                autoWidth: false,
+                columnDefs: [{ targets: -1, orderable: false }]
+            });
+            $('#malzemeTalepleriTablo').DataTable({
+                language: dtLang,
+                order: [[0, 'desc']],
+                pageLength: 10,
+                autoWidth: false,
+                columnDefs: [{ targets: -1, orderable: false }]
+            });
+            $('#hammaddeGecmisTablo').DataTable({
+                language: dtLang,
+                order: [[0, 'desc']],
+                pageLength: 10,
+                autoWidth: false,
+                columnDefs: [{ targets: -1, orderable: false }]
+            });
 
             // =============================================
             // KANTAR ENTEGRASYONU - Satınalma Modalı İçin
@@ -1022,6 +1260,7 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                     '<table class="table table-sm text-start mt-2">' +
                                     '<tr><td><b>Plaka</b></td><td>' + data.plaka + '</td></tr>' +
                                     '<tr><td><b>Firma</b></td><td>' + data.firma + '</td></tr>' +
+                                    '<tr><td><b>Kaynak</b></td><td>' + (data.kaynak || '-') + '</td></tr>' +
                                     '<tr><td><b>Net Ağırlık</b></td><td><b class="text-success fs-5">' + data.net_kg.toLocaleString('tr-TR') + ' kg</b></td></tr>' +
                                     '</table>',
                                 confirmButtonText: 'Tamam',
@@ -1029,10 +1268,18 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                 timer: 5000
                             });
                         } else {
+                            var hataMesaji = data.hata || 'Kantar verisi alınamadı.';
+                            if (data.hata_kodu === 'PLAKA_ESLESMEDI') {
+                                hataMesaji = 'Bu plakaya ait uygun kantar kaydı bulunamadı.';
+                            } else if (data.hata_kodu === 'KARARSIZ_VERI') {
+                                hataMesaji = 'Kantar verisi o an güncelleniyordu. Lütfen tekrar çekin.';
+                            } else if (data.hata_kodu === 'KANTAR_ERISIM') {
+                                hataMesaji = 'Kantar cihazına erişilemiyor. Ağ bağlantısını kontrol edin.';
+                            }
                             Swal.fire({
                                 icon: 'error',
                                 title: 'Kantar Bağlantı Hatası',
-                                text: data.hata || 'Kantar verisi alınamadı.',
+                                text: hataMesaji,
                                 confirmButtonColor: '#ef4444'
                             });
                         }

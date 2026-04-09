@@ -91,27 +91,42 @@ try {
         if($h_yogunluk <= 0) $h_yogunluk = 780;
         
         $dusen_kg = 0;
-        $fifo_res = $baglanti->query("SELECT id, kalan_miktar_kg FROM silo_stok_detay WHERE silo_id = $kaynak_id AND kalan_miktar_kg > 0 ORDER BY giris_tarihi ASC");
+        $k_m3_dusus_toplam = 0;
+        
+        $fifo_res = $baglanti->query("SELECT id, parti_kodu, kalan_miktar_kg FROM silo_stok_detay WHERE silo_id = $kaynak_id AND kalan_miktar_kg > 0 ORDER BY giris_tarihi ASC");
         
         $kalan_transfer = $transfer_kg;
         while($kalan_transfer > 0 && ($f = $fifo_res->fetch_assoc())) {
             $f_id = $f['id'];
-            $stok_kapat = (float)$f['kalan_miktar_kg'];
-            if ($stok_kapat > $kalan_transfer) {
+            $f_parti = $f['parti_kodu'];
+            $stok_kalan = (float)$f['kalan_miktar_kg'];
+            
+            // Bu parti için hektolitre verisini çek
+            $hek_res = $baglanti->query("SELECT hektolitre FROM lab_analizleri WHERE parti_no = '$f_parti' ORDER BY id DESC LIMIT 1");
+            $f_hektolitre = ($hek_res && $hek_res->num_rows > 0) ? (float)$hek_res->fetch_assoc()['hektolitre'] : 0;
+            
+            // Yoğunluk hesabı (Hektolitre * 10 = kg/m3). Yoksa silo/hammadde varsayılanı.
+            $f_yogunluk = ($f_hektolitre > 0) ? ($f_hektolitre * 10) : $k_yogunluk;
+            if($f_yogunluk <= 0) $f_yogunluk = 780;
+
+            $islem_kg = 0;
+            if ($stok_kalan > $kalan_transfer) {
                 $baglanti->query("UPDATE silo_stok_detay SET kalan_miktar_kg = kalan_miktar_kg - $kalan_transfer WHERE id = $f_id");
-                $dusen_kg += $kalan_transfer;
+                $islem_kg = $kalan_transfer;
                 $kalan_transfer = 0;
             } else {
                 $baglanti->query("UPDATE silo_stok_detay SET kalan_miktar_kg = 0, durum='tükendi' WHERE id = $f_id");
-                $dusen_kg += $stok_kapat;
-                $kalan_transfer -= $stok_kapat;
+                $islem_kg = $stok_kalan;
+                $kalan_transfer -= $stok_kalan;
             }
+            
+            $dusen_kg += $islem_kg;
+            $k_m3_dusus_toplam += ($islem_kg / $f_yogunluk);
         }
         
         if ($dusen_kg > 0) {
-            // M3 düşüşü
-            $k_m3_dusus = $dusen_kg / $k_yogunluk;
-            $baglanti->query("UPDATE silolar SET doluluk_m3 = GREATEST(0, doluluk_m3 - $k_m3_dusus) WHERE id = $kaynak_id");
+            // M3 düşüşü (Dinamik hesaplanan toplam m3 düşüşü kullanılıyor)
+            $baglanti->query("UPDATE silolar SET doluluk_m3 = GREATEST(0, doluluk_m3 - $k_m3_dusus_toplam) WHERE id = $kaynak_id");
             
             // HEDEF SİLO EKLEME İŞLEMİ
             $h_m3_artis = $dusen_kg / $h_yogunluk;

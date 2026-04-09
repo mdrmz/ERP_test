@@ -834,6 +834,27 @@ function bildirimSayisi($baglanti)
 }
 
 /**
+ * Satin Alma panelindeki bekleyen hammadde alim sayisini dondurur
+ *
+ * @param mysqli $baglanti
+ * @return int
+ */
+function satinAlmaBekleyenHammaddeSayisi($baglanti)
+{
+    $sayac = 0;
+
+    $hammadde_tablo_kontrol = @$baglanti->query("SHOW TABLES LIKE 'hammadde_kabul_akisi'");
+    if ($hammadde_tablo_kontrol && $hammadde_tablo_kontrol->num_rows > 0) {
+        $hammadde_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM hammadde_kabul_akisi WHERE asama = 'satina_bekliyor'");
+        if ($hammadde_result && $hammadde_row = $hammadde_result->fetch_assoc()) {
+            $sayac = (int) ($hammadde_row['cnt'] ?? 0);
+        }
+    }
+
+    return $sayac;
+}
+
+/**
  * Kullanıcının bildirimlerini listeler
  *
  * @param mysqli $baglanti

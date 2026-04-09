@@ -19,6 +19,34 @@ bakimBildirimleriniKontrolEt($baglanti);
 
 $mesaj = "";
 $hata = "";
+$aktif_tab = "makine";
+$izinli_tablar = ["makine", "gecmis", "dosyalar"];
+if (isset($_GET["tab"]) && in_array($_GET["tab"], $izinli_tablar, true)) {
+    $aktif_tab = $_GET["tab"];
+}
+
+$pdf_max_boyut = 10 * 1024 * 1024; // 10 MB
+$pdf_upload_rel_klasor = 'uploads/bakim_pdf';
+$pdf_upload_abs_klasor = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'bakim_pdf';
+$pdf_yazma_yetkisi = yazmaYetkisiVar($baglanti);
+$bakim_dokuman_tablosu_var = false;
+
+$tablo_kontrol = $baglanti->query("SHOW TABLES LIKE 'bakim_dokumanlari'");
+if ($tablo_kontrol && $tablo_kontrol->num_rows > 0) {
+    $bakim_dokuman_tablosu_var = true;
+}
+
+function dosyaBoyutuFormatla($bytes)
+{
+    $bytes = (int) $bytes;
+    if ($bytes < 1024) {
+        return $bytes . ' B';
+    }
+    if ($bytes < 1024 * 1024) {
+        return round($bytes / 1024, 1) . ' KB';
+    }
+    return round($bytes / (1024 * 1024), 2) . ' MB';
+}
 
 // --- 0. AJAX MAKİNE GEÇMİŞİ ÇEKME ---
 if (isset($_GET["get_history"]) && isset($_GET["makine_id"])) {
@@ -35,6 +63,56 @@ if (isset($_GET["get_history"]) && isset($_GET["makine_id"])) {
     header('Content-Type: application/json');
     echo json_encode($history);
     exit;
+}
+
+// --- 0.1 PDF DOSYA INDIRME ---
+if (isset($_GET["pdf_indir"])) {
+    $aktif_tab = "dosyalar";
+    $pdf_id = (int) $_GET["pdf_indir"];
+    $pdf_mode = (isset($_GET["pdf_mode"]) && $_GET["pdf_mode"] === "inline") ? "inline" : "attachment";
+
+    if (!$bakim_dokuman_tablosu_var) {
+        $hata = "Hata: Dokuman tablosu bulunamadi. Once kurulum scriptini calistirin.";
+    } elseif ($pdf_id <= 0) {
+        $hata = "Hata: Gecersiz dosya istegi.";
+    } else {
+        $stmt_pdf = $baglanti->prepare("SELECT id, orijinal_ad, dosya_yolu, mime_type FROM bakim_dokumanlari WHERE id = ? LIMIT 1");
+        $stmt_pdf->bind_param("i", $pdf_id);
+        $stmt_pdf->execute();
+        $pdf_kayit = $stmt_pdf->get_result()->fetch_assoc();
+
+        if (!$pdf_kayit) {
+            $hata = "Hata: Dosya kaydi bulunamadi.";
+        } else {
+            $goreceli_yol = ltrim((string) $pdf_kayit['dosya_yolu'], '/\\');
+            $aday_dosya = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $goreceli_yol);
+            $gercek_dosya = realpath($aday_dosya);
+            $gercek_klasor = realpath($pdf_upload_abs_klasor);
+
+            if (!$gercek_dosya || !is_file($gercek_dosya) || !$gercek_klasor || strpos($gercek_dosya, $gercek_klasor) !== 0) {
+                $hata = "Hata: Dosya fiziksel olarak bulunamadi.";
+            } else {
+                $indirilecek_ad = basename((string) $pdf_kayit['orijinal_ad']);
+                $indirilecek_ad = str_replace(["\r", "\n"], '', $indirilecek_ad);
+                if ($indirilecek_ad === '') {
+                    $indirilecek_ad = 'dokuman.pdf';
+                }
+
+                while (ob_get_level()) {
+                    ob_end_clean();
+                }
+
+                header('Content-Description: File Transfer');
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: ' . $pdf_mode . '; filename="' . rawurlencode($indirilecek_ad) . '"');
+                header('Content-Length: ' . filesize($gercek_dosya));
+                header('Cache-Control: private, max-age=0, must-revalidate');
+                header('Pragma: public');
+                readfile($gercek_dosya);
+                exit;
+            }
+        }
+    }
 }
 
 // --- 1. YENİ MAKİNE EKLEME ---
@@ -266,6 +344,143 @@ if (isset($_GET["lab_malzeme_sil"])) {
 }
 
 // İSTATİSTİKLER
+$pdf_yukleme_aktif = $bakim_dokuman_tablosu_var;
+
+// --- 7. PDF DOSYA YUKLEME ---
+if (isset($_POST["pdf_yukle"])) {
+    $aktif_tab = "dosyalar";
+    if (!$pdf_yazma_yetkisi) {
+        $hata = "Hata: PDF yukleme yetkiniz bulunmuyor.";
+    } elseif (!$pdf_yukleme_aktif) {
+        $hata = "Hata: Dokuman tablosu bulunamadi. Once kurulum scriptini calistirin.";
+    } elseif (!isset($_FILES["pdf_dosya"])) {
+        $hata = "Hata: Yuklenecek dosya secilmedi.";
+    } else {
+        $dosya = $_FILES["pdf_dosya"];
+
+        if (!isset($dosya['error']) || $dosya['error'] !== UPLOAD_ERR_OK) {
+            $hata_kodu = isset($dosya['error']) ? (int) $dosya['error'] : -1;
+            if ($hata_kodu === UPLOAD_ERR_INI_SIZE || $hata_kodu === UPLOAD_ERR_FORM_SIZE) {
+                $hata = "Hata: Dosya boyutu siniri asildi. Maksimum 10 MB yukleyebilirsiniz.";
+            } else {
+                $hata = "Hata: Dosya yukleme sirasinda bir sorun olustu (Kod: $hata_kodu).";
+            }
+        } elseif ((int) $dosya['size'] <= 0) {
+            $hata = "Hata: Bos dosya yukleyemezsiniz.";
+        } elseif ((int) $dosya['size'] > $pdf_max_boyut) {
+            $hata = "Hata: Dosya boyutu 10 MB sinirini asiyor.";
+        } else {
+            $orijinal_ad = basename((string) $dosya['name']);
+            $orijinal_ad = str_replace(["\r", "\n"], '', $orijinal_ad);
+            $uzanti = strtolower((string) pathinfo($orijinal_ad, PATHINFO_EXTENSION));
+
+            if ($uzanti !== 'pdf') {
+                $hata = "Hata: Sadece PDF dosyasi yukleyebilirsiniz.";
+            } else {
+                $tmp_dosya = (string) $dosya['tmp_name'];
+                $mime_type = '';
+
+                if (function_exists('finfo_open')) {
+                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                    if ($finfo) {
+                        $mime_type = (string) finfo_file($finfo, $tmp_dosya);
+                        finfo_close($finfo);
+                    }
+                } elseif (function_exists('mime_content_type')) {
+                    $mime_type = (string) mime_content_type($tmp_dosya);
+                }
+
+                if ($mime_type !== 'application/pdf') {
+                    $hata = "Hata: Gecersiz dosya turu. MIME tipi application/pdf olmalidir.";
+                } else {
+                    if (!is_dir($pdf_upload_abs_klasor) && !mkdir($pdf_upload_abs_klasor, 0755, true)) {
+                        $hata = "Hata: Yedek klasoru olusturulamadi.";
+                    } else {
+                        try {
+                            $rastgele = bin2hex(random_bytes(6));
+                        } catch (Exception $e) {
+                            $rastgele = (string) mt_rand(100000, 999999);
+                        }
+
+                        $saklanan_ad = 'bakim_' . date('Ymd_His') . '_' . $rastgele . '.pdf';
+                        $hedef_abs = $pdf_upload_abs_klasor . DIRECTORY_SEPARATOR . $saklanan_ad;
+                        $hedef_rel = $pdf_upload_rel_klasor . '/' . $saklanan_ad;
+
+                        if (!move_uploaded_file($tmp_dosya, $hedef_abs)) {
+                            $hata = "Hata: Dosya sunucuya tasinamadi.";
+                        } else {
+                            $dosya_boyut = (int) $dosya['size'];
+                            $yukleyen_id = (int) ($_SESSION['user_id'] ?? 0);
+
+                            $stmt_ekle = $baglanti->prepare("INSERT INTO bakim_dokumanlari (orijinal_ad, saklanan_ad, dosya_yolu, dosya_boyut, mime_type, yukleyen_user_id) VALUES (?, ?, ?, ?, ?, ?)");
+                            $stmt_ekle->bind_param("sssisi", $orijinal_ad, $saklanan_ad, $hedef_rel, $dosya_boyut, $mime_type, $yukleyen_id);
+
+                            if ($stmt_ekle->execute()) {
+                                $mesaj = "PDF dosyasi yuklendi: $orijinal_ad";
+                                systemLogKaydet($baglanti, "INSERT", "Bakim & Ariza", "Bakim dokumani yuklendi: $orijinal_ad");
+                            } else {
+                                if (is_file($hedef_abs)) {
+                                    unlink($hedef_abs);
+                                }
+                                $hata = "Hata: Veritabani kaydi olusturulamadi. " . $baglanti->error;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// --- 8. PDF DOSYA SILME ---
+if (isset($_GET["pdf_sil"])) {
+    $aktif_tab = "dosyalar";
+    $pdf_id = (int) $_GET["pdf_sil"];
+
+    if (!$pdf_yazma_yetkisi) {
+        $hata = "Hata: PDF silme yetkiniz bulunmuyor.";
+    } elseif (!$pdf_yukleme_aktif) {
+        $hata = "Hata: Dokuman tablosu bulunamadi. Once kurulum scriptini calistirin.";
+    } elseif ($pdf_id <= 0) {
+        $hata = "Hata: Gecersiz dosya kaydi.";
+    } else {
+        $stmt_bul = $baglanti->prepare("SELECT id, orijinal_ad, dosya_yolu FROM bakim_dokumanlari WHERE id = ? LIMIT 1");
+        $stmt_bul->bind_param("i", $pdf_id);
+        $stmt_bul->execute();
+        $pdf_kayit = $stmt_bul->get_result()->fetch_assoc();
+
+        if (!$pdf_kayit) {
+            $hata = "Hata: Silinecek dosya kaydi bulunamadi.";
+        } else {
+            $goreceli_yol = ltrim((string) $pdf_kayit['dosya_yolu'], '/\\');
+            $aday_dosya = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $goreceli_yol);
+            $gercek_dosya = realpath($aday_dosya);
+            $gercek_klasor = realpath($pdf_upload_abs_klasor);
+
+            $silinecek_dosya = null;
+            if ($gercek_dosya && $gercek_klasor && strpos($gercek_dosya, $gercek_klasor) === 0) {
+                $silinecek_dosya = $gercek_dosya;
+            } elseif (is_file($aday_dosya)) {
+                $silinecek_dosya = $aday_dosya;
+            }
+
+            $stmt_sil = $baglanti->prepare("DELETE FROM bakim_dokumanlari WHERE id = ?");
+            $stmt_sil->bind_param("i", $pdf_id);
+
+            if ($stmt_sil->execute()) {
+                if ($silinecek_dosya && is_file($silinecek_dosya)) {
+                    @unlink($silinecek_dosya);
+                }
+                $mesaj = "PDF dosyasi silindi.";
+                $dokuman_adi_log = (string) $pdf_kayit['orijinal_ad'];
+                systemLogKaydet($baglanti, "DELETE", "Bakim & Ariza", "Bakim dokumani silindi: $dokuman_adi_log");
+            } else {
+                $hata = "Hata: Kayit silinemedi. " . $baglanti->error;
+            }
+        }
+    }
+}
+
 $stats = [
     'gecikmis' => $baglanti->query("SELECT COUNT(*) as sayi FROM makineler WHERE aktif = 1 AND sonraki_bakim_tarihi < CURRENT_DATE")->fetch_assoc()['sayi'],
     'yaklasan' => $baglanti->query("SELECT COUNT(*) as sayi FROM makineler WHERE aktif = 1 AND sonraki_bakim_tarihi BETWEEN CURRENT_DATE AND DATE_ADD(CURRENT_DATE, INTERVAL 7 DAY)")->fetch_assoc()['sayi'],
@@ -276,6 +491,10 @@ $stats = [
 $makineler = $baglanti->query("SELECT * FROM makineler WHERE aktif = 1 ORDER BY sonraki_bakim_tarihi ASC");
 $gecmis = $baglanti->query("SELECT b.*, m.makine_adi, m.makine_kodu FROM bakim_kayitlari b JOIN makineler m ON b.makine_id = m.id ORDER BY b.bakim_tarihi DESC LIMIT 20");
 $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY malzeme_adi ASC");
+$bakim_dokumanlari = false;
+if ($pdf_yukleme_aktif) {
+    $bakim_dokumanlari = $baglanti->query("SELECT d.*, u.kadi, u.tam_ad FROM bakim_dokumanlari d LEFT JOIN users u ON d.yukleyen_user_id = u.id ORDER BY d.yukleme_tarihi DESC");
+}
 ?>
 
 <!DOCTYPE html>
@@ -530,16 +749,19 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
         <!-- TABS NAVIGATION -->
         <ul class="nav nav-pills mb-4" id="pills-tab" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="pills-makine-tab" data-bs-toggle="pill" data-bs-target="#pills-makine" type="button" role="tab"><i class="fas fa-th-large me-2"></i>Makine Durumları</button>
+                <button class="nav-link<?php echo $aktif_tab === 'makine' ? ' active' : ''; ?>" id="pills-makine-tab" data-bs-toggle="pill" data-bs-target="#pills-makine" type="button" role="tab"><i class="fas fa-th-large me-2"></i>Makine Durumları</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="pills-gecmis-tab" data-bs-toggle="pill" data-bs-target="#pills-gecmis" type="button" role="tab"><i class="fas fa-history me-2"></i>Son Bakım İşlemleri & Lab</button>
+                <button class="nav-link<?php echo $aktif_tab === 'gecmis' ? ' active' : ''; ?>" id="pills-gecmis-tab" data-bs-toggle="pill" data-bs-target="#pills-gecmis" type="button" role="tab"><i class="fas fa-history me-2"></i>Son Bakım İşlemleri & Lab</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link<?php echo $aktif_tab === 'dosyalar' ? ' active' : ''; ?>" id="pills-dosyalar-tab" data-bs-toggle="pill" data-bs-target="#pills-dosyalar" type="button" role="tab"><i class="fas fa-file-pdf me-2"></i>Dosyalarım</button>
             </li>
         </ul>
 
         <div class="tab-content" id="pills-tabContent">
             <!-- TAB 1: MAKİNE DURUMLARI -->
-            <div class="tab-pane fade show active" id="pills-makine" role="tabpanel">
+            <div class="tab-pane fade<?php echo $aktif_tab === 'makine' ? ' show active' : ''; ?>" id="pills-makine" role="tabpanel">
                 <!-- STATS -->
                 <div class="row g-4 mb-4">
                     <div class="col-md-4">
@@ -714,7 +936,7 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
             </div>
 
             <!-- TAB 2: SON BAKIM İŞLEMLERİ & LAB -->
-            <div class="tab-pane fade" id="pills-gecmis" role="tabpanel">
+            <div class="tab-pane fade<?php echo $aktif_tab === 'gecmis' ? ' show active' : ''; ?>" id="pills-gecmis" role="tabpanel">
                 <div class="row">
                     <!-- SON BAKIM KAYITLARI -->
                     <div class="col-lg-7">
@@ -802,6 +1024,140 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
                                                 <?php endwhile; ?>
                                             <?php else: ?>
                                                 <tr><td colspan="4" class="text-center py-4 text-muted">Kayıt yok.</td></tr>
+                                            <?php endif; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: DOSYALARIM -->
+            <div class="tab-pane fade<?php echo $aktif_tab === 'dosyalar' ? ' show active' : ''; ?>" id="pills-dosyalar" role="tabpanel">
+                <div class="row g-4">
+                    <div class="col-lg-4">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white border-bottom py-3">
+                                <h5 class="mb-0 fw-bold"><i class="fas fa-upload text-primary me-2"></i>PDF Yukle</h5>
+                            </div>
+                            <div class="card-body">
+                                <?php if (!$pdf_yukleme_aktif): ?>
+                                    <div class="alert alert-warning mb-0 small">
+                                        <strong>Kurulum Gerekli:</strong> <code>create_bakim_dokumanlari_table.php</code> scriptini bir kez calistirin.
+                                    </div>
+                                <?php else: ?>
+                                    <form method="post" action="?tab=dosyalar" enctype="multipart/form-data">
+                                        <div class="mb-3">
+                                            <label class="form-label small fw-bold text-muted">PDF Dosyasi</label>
+                                            <input type="file" name="pdf_dosya" class="form-control" accept=".pdf,application/pdf" required <?php echo !$pdf_yazma_yetkisi ? 'disabled' : ''; ?>>
+                                            <div class="form-text">Maksimum dosya boyutu: 10 MB</div>
+                                        </div>
+                                        <button type="submit" name="pdf_yukle" class="btn btn-primary w-100" <?php echo !$pdf_yazma_yetkisi ? 'disabled' : ''; ?>>
+                                            <i class="fas fa-file-upload me-2"></i>PDF Yukle
+                                        </button>
+                                        <?php if (!$pdf_yazma_yetkisi): ?>
+                                            <div class="text-muted small mt-2">Yukleme icin yazma yetkisi gereklidir.</div>
+                                        <?php endif; ?>
+                                    </form>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-8">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white border-bottom py-3">
+                                <h5 class="mb-0 fw-bold"><i class="fas fa-folder-open text-danger me-2"></i>Yuklenen PDF'ler</h5>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table id="pdfDokumanTable" class="table table-hover mb-0" style="font-size: 0.9rem;">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>
+                                                    <div class="d-inline-flex align-items-center gap-1">
+                                                        <span>Dosya Adi</span>
+                                                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-sort-col="name" onclick="sortPdfTable('name')" title="Dosya adina gore sirala">
+                                                            <i class="fas fa-sort text-muted pdf-sort-icon"></i>
+                                                        </button>
+                                                    </div>
+                                                </th>
+                                                <th>
+                                                    <div class="d-inline-flex align-items-center gap-1">
+                                                        <span>Boyut</span>
+                                                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-sort-col="size" onclick="sortPdfTable('size')" title="Boyuta gore sirala">
+                                                            <i class="fas fa-sort text-muted pdf-sort-icon"></i>
+                                                        </button>
+                                                    </div>
+                                                </th>
+                                                <th>
+                                                    <div class="d-inline-flex align-items-center gap-1">
+                                                        <span>Yukleyen</span>
+                                                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-sort-col="uploader" onclick="sortPdfTable('uploader')" title="Yukleyene gore sirala">
+                                                            <i class="fas fa-sort text-muted pdf-sort-icon"></i>
+                                                        </button>
+                                                    </div>
+                                                </th>
+                                                <th>
+                                                    <div class="d-inline-flex align-items-center gap-1">
+                                                        <span>Tarih</span>
+                                                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-sort-col="date" onclick="sortPdfTable('date')" title="Tarihe gore sirala">
+                                                            <i class="fas fa-sort text-muted pdf-sort-icon"></i>
+                                                        </button>
+                                                    </div>
+                                                </th>
+                                                <th class="text-end pe-3">Islem</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="pdfTableBody">
+                                            <?php if (!$pdf_yukleme_aktif): ?>
+                                                <tr>
+                                                    <td colspan="5" class="text-center py-4 text-muted">Dokuman tablosu henuz hazir degil.</td>
+                                                </tr>
+                                            <?php elseif ($bakim_dokumanlari && $bakim_dokumanlari->num_rows > 0): ?>
+                                                <?php while ($pdf = $bakim_dokumanlari->fetch_assoc()):
+                                                    $yukleyen = trim((string) ($pdf['tam_ad'] ?: $pdf['kadi']));
+                                                    if ($yukleyen === '') {
+                                                        $yukleyen = 'Bilinmiyor';
+                                                    }
+                                                    $sort_name = mb_strtolower((string) $pdf['orijinal_ad'], 'UTF-8');
+                                                    $sort_uploader = mb_strtolower((string) $yukleyen, 'UTF-8');
+                                                    $sort_size = (int) $pdf['dosya_boyut'];
+                                                    $sort_date = strtotime((string) $pdf['yukleme_tarihi']) ?: 0;
+                                                ?>
+                                                    <tr data-row-type="data"
+                                                        data-sort-name="<?php echo htmlspecialchars($sort_name); ?>"
+                                                        data-sort-size="<?php echo $sort_size; ?>"
+                                                        data-sort-uploader="<?php echo htmlspecialchars($sort_uploader); ?>"
+                                                        data-sort-date="<?php echo $sort_date; ?>">
+                                                        <td>
+                                                            <i class="fas fa-file-pdf text-danger me-2"></i>
+                                                            <strong><?php echo htmlspecialchars($pdf['orijinal_ad']); ?></strong>
+                                                        </td>
+                                                        <td class="text-muted"><?php echo dosyaBoyutuFormatla($pdf['dosya_boyut']); ?></td>
+                                                        <td><?php echo htmlspecialchars($yukleyen); ?></td>
+                                                        <td class="text-muted"><?php echo date('d.m.Y H:i', strtotime($pdf['yukleme_tarihi'])); ?></td>
+                                                        <td class="text-end pe-3">
+                                                            <a href="?pdf_indir=<?php echo (int) $pdf['id']; ?>&pdf_mode=inline" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary" title="Yeni sekmede goruntule">
+                                                                <i class="fas fa-eye"></i>
+                                                            </a>
+                                                            <a href="?pdf_indir=<?php echo (int) $pdf['id']; ?>" class="btn btn-sm btn-outline-primary">
+                                                                <i class="fas fa-download"></i>
+                                                            </a>
+                                                            <?php if ($pdf_yazma_yetkisi): ?>
+                                                                <a href="?pdf_sil=<?php echo (int) $pdf['id']; ?>&tab=dosyalar" class="btn btn-sm btn-outline-danger" onclick="pdfSilmeOnay(event, this.href)">
+                                                                    <i class="fas fa-trash"></i>
+                                                                </a>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                    </tr>
+                                                <?php endwhile; ?>
+                                            <?php else: ?>
+                                                <tr>
+                                                    <td colspan="5" class="text-center py-4 text-muted">Henuz yuklenmis PDF dosyasi yok.</td>
+                                                </tr>
                                             <?php endif; ?>
                                         </tbody>
                                     </table>
@@ -1207,6 +1563,8 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
                     confirmButtonColor: '#0f172a'
                 });
             <?php endif; ?>
+
+            initPdfTableSortUi();
         });
 
         function silmeOnay(e, url) {
@@ -1225,6 +1583,94 @@ $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY 
                     window.location.href = url;
                 }
             });
+        }
+
+        function pdfSilmeOnay(e, url) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Emin misiniz?',
+                text: 'Bu PDF dosyasi kalici olarak silinecektir.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Evet, Sil',
+                cancelButtonText: 'Iptal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = url;
+                }
+            });
+        }
+
+        const pdfSortState = {
+            col: 'date',
+            dir: 'desc'
+        };
+
+        function initPdfTableSortUi() {
+            const tbody = document.getElementById('pdfTableBody');
+            if (!tbody) return;
+            updatePdfSortIcons();
+        }
+
+        function getPdfSortValue(row, col) {
+            if (col === 'size') {
+                return parseInt(row.getAttribute('data-sort-size') || '0', 10);
+            }
+            if (col === 'date') {
+                return parseInt(row.getAttribute('data-sort-date') || '0', 10);
+            }
+            if (col === 'name') {
+                return (row.getAttribute('data-sort-name') || '').toLocaleLowerCase('tr-TR');
+            }
+            if (col === 'uploader') {
+                return (row.getAttribute('data-sort-uploader') || '').toLocaleLowerCase('tr-TR');
+            }
+            return '';
+        }
+
+        function sortPdfTable(col) {
+            const tbody = document.getElementById('pdfTableBody');
+            if (!tbody) return;
+
+            const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'));
+            if (rows.length === 0) return;
+
+            if (pdfSortState.col === col) {
+                pdfSortState.dir = pdfSortState.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                pdfSortState.col = col;
+                pdfSortState.dir = col === 'date' ? 'desc' : 'asc';
+            }
+
+            const direction = pdfSortState.dir === 'asc' ? 1 : -1;
+
+            rows.sort((a, b) => {
+                const va = getPdfSortValue(a, col);
+                const vb = getPdfSortValue(b, col);
+
+                if (typeof va === 'number' && typeof vb === 'number') {
+                    return (va - vb) * direction;
+                }
+                return String(va).localeCompare(String(vb), 'tr', { sensitivity: 'base' }) * direction;
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+            updatePdfSortIcons();
+        }
+
+        function updatePdfSortIcons() {
+            const buttons = document.querySelectorAll('#pdfDokumanTable [data-sort-col]');
+            buttons.forEach(btn => {
+                const icon = btn.querySelector('.pdf-sort-icon');
+                if (!icon) return;
+                icon.className = 'fas fa-sort text-muted pdf-sort-icon';
+            });
+
+            const active = document.querySelector(`#pdfDokumanTable [data-sort-col="${pdfSortState.col}"] .pdf-sort-icon`);
+            if (!active) return;
+            active.className = `fas ${pdfSortState.dir === 'asc' ? 'fa-sort-up' : 'fa-sort-down'} text-primary pdf-sort-icon`;
         }
 
         // Makine Arama ve Filtreleme

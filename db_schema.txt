@@ -1,0 +1,20 @@
+--- hammadde_girisleri ---
+id (int(11)) | tarih (datetime) | hammadde_id (int(11)) | silo_id (int(11)) | miktar_kg (decimal(10,2)) | giris_m3 (decimal(10,3)) | hektolitre (decimal(5,2)) | elenmis_hektolitre (decimal(5,2)) | parti_no (varchar(50)) | tedarikci (varchar(100)) | irsaliye_no (varchar(50)) | arac_plaka (varchar(20)) | personel (varchar(50)) | analiz_yapildi (tinyint(4)) | onay_durum (varchar(20)) | hesaplanan_m3 (decimal(10,3)) | gelen_kg (decimal(12,2)) | islem_yapan (varchar(50)) | nem (decimal(10,2)) | protein (decimal(10,2)) | nisasta (decimal(10,2)) | sertlik (decimal(10,2)) | 
+--- yikama_kayitlari ---
+id (int(11)) | parti_no (varchar(50)) | hammadde_parti_no (varchar(50)) | yikama_tarihi (datetime) | urun_adi (varchar(100)) | hektolitre (decimal(6,2)) | nem (decimal(5,2)) | protein (decimal(5,2)) | sertlik (decimal(5,2)) | nisasta (decimal(5,2)) | tam_bugday_kg (decimal(10,2)) | tohum_miktari_kg (decimal(10,2)) | su_sicakligi (decimal(5,2)) | personel (varchar(100)) | 
+--- aktarma_kayitlari ---
+id (int(11)) | parti_no (varchar(50)) | yikama_id (int(11)) | aktarma_tarihi (datetime) | nem (decimal(5,2)) | verilen_su_litre (decimal(10,2)) | personel (varchar(100)) | 
+--- b1_degirmen_kayitlari ---
+id (int(11)) | parti_no (varchar(50)) | aktarma_id (int(11)) | uretim_tarihi (datetime) | hektolitre (decimal(6,2)) | nem (decimal(5,2)) | protein (decimal(5,2)) | sertlik (decimal(5,2)) | nisasta (decimal(5,2)) | verilen_su_litre (decimal(10,2)) | personel (varchar(100)) | 
+--- un_cikis_kayitlari ---
+id (int(11)) | parti_no (varchar(50)) | b1_id (int(11)) | cikis_tarihi (datetime) | protein (decimal(5,2)) | personel (varchar(100)) | 
+--- uretim_hareketleri ---
+id (int(11)) | parti_no (varchar(50)) | yikama_parti_no (varchar(50)) | is_emri_id (int(11)) | tarih (datetime) | uretilen_miktar_kg (decimal(10,2)) | kullanilan_kg (decimal(10,2)) | personel (varchar(100)) | notlar (text) | cikis_silo_id (int(11)) | giris_silo_id (int(11)) | uretilen_kg (decimal(10,2)) | randiman (decimal(5,2)) | 
+--- lab_analizleri ---
+id (int(11)) | parti_no (varchar(50)) | hammadde_giris_id (int(11)) | protein (decimal(5,2)) | gluten (decimal(5,2)) | index_degeri (int(11)) | sedimantasyon (int(11)) | gecikmeli_sedimantasyon (int(11)) | hektolitre (decimal(6,2)) | nem (decimal(5,2)) | fn (int(11)) | sertlik (decimal(6,2)) | nisasta (decimal(5,2)) | doker_orani (decimal(5,2)) | laborant (varchar(50)) | tarih (datetime) | 
+--- paketleme_hareketleri ---
+id (int(11)) | parti_no (varchar(50)) | urun_id (int(11)) | uretim_parti_no (varchar(50)) | miktar (decimal(10,2)) | tarih (datetime) | personel (varchar(100)) | paketleme_recetesi_id (int(11)) | paketleme_sistemi_tonaj (decimal(10,2)) | depo_id (int(11)) | qr_kod (varchar(255)) | 
+--- sevkiyatlar ---
+id (int(11)) | parti_no (varchar(50)) | musteri_adi (varchar(100)) | sevk_tarihi (datetime) | sevk_miktari (decimal(10,2)) | birim (varchar(20)) | irsaliye_no (varchar(50)) | fatura_no (varchar(50)) | arac_plaka (varchar(20)) | sofor_adi (varchar(100)) | sofor_telefon (varchar(20)) | kanit_belgesi (varchar(255)) | sevk_eden_user_id (int(11)) | onay_durum (varchar(20)) | kayit_tarihi (datetime) | 
+
+--- ERRORS ---

@@ -810,7 +810,7 @@ $roller = $baglanti->query("SELECT * FROM kullanici_rolleri ORDER BY id");
                                     'ikon' => 'fa-flask',
                                     'moduller' => [
                                         ['db_adi' => 'İzlenebilirlik', 'gorunen_adi' => 'İzlenebilirlik', 'ikon' => 'fa-barcode'],
-                                        ['db_adi' => 'Lab Analizleri', 'gorunen_adi' => 'Lab Analiz', 'ikon' => 'fa-flask']
+                                        ['db_adi' => 'Lab Analizleri', 'gorunen_adi' => 'Hammadde Analiz', 'ikon' => 'fa-flask']
                                     ]
                                 ],
                                 'Bakım' => [
@@ -1281,7 +1281,7 @@ $roller = $baglanti->query("SELECT * FROM kullanici_rolleri ORDER BY id");
                                     'renk' => '#8b5cf6',
                                     'moduller' => [
                                         ['db_adi' => 'İzlenebilirlik', 'gorunen_adi' => 'İzlenebilirlik', 'ikon' => 'fa-barcode'],
-                                        ['db_adi' => 'Lab Analizleri', 'gorunen_adi' => 'Lab Analiz', 'ikon' => 'fa-flask'],
+                                        ['db_adi' => 'Lab Analizleri', 'gorunen_adi' => 'Hammadde Analiz', 'ikon' => 'fa-flask'],
                                     ]
                                 ],
                                 'Bakım' => [

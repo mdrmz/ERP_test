@@ -118,6 +118,11 @@ if (isset($_POST['silo_ekle'])) {
 
         if ($baglanti->query($sql)) {
             $mesaj = "✅ Silo eklendi: $adi";
+            $yeni_silo_id = (int) $baglanti->insert_id;
+            $izinli_log = !empty($izinli_kodlar) ? implode(',', $izinli_kodlar) : '-';
+            $plc_ip_log = ($plc_ip !== '') ? $plc_ip : '-';
+            $aciklama = "Silo eklendi: $adi (ID: $yeni_silo_id) | Tip: $tip | Kapasite: " . sayiFormat($kapasite, 2) . " m3 | PLC IP: $plc_ip_log | İzinli Kodlar: $izinli_log";
+            systemLogKaydet($baglanti, 'INSERT', 'Silo Yönetimi', $aciklama);
         } else {
             $hata = "Ekleme hatası: " . $baglanti->error;
         }
@@ -129,8 +134,22 @@ if (isset($_POST['silo_ekle'])) {
 // 2. SİLO SİLME
 if (isset($_POST['silo_sil'])) {
     $id = (int) ($_POST['silo_id'] ?? 0);
+    $silo_adi_log = 'Bilinmeyen Silo';
+    $silo_tip_log = '-';
+
+    if ($id > 0) {
+        $silo_bilgi_res = $baglanti->query("SELECT silo_adi, tip FROM silolar WHERE id=$id LIMIT 1");
+        if ($silo_bilgi_res && $silo_bilgi_res->num_rows > 0) {
+            $silo_bilgi = $silo_bilgi_res->fetch_assoc();
+            $silo_adi_log = $silo_bilgi['silo_adi'] ?? $silo_adi_log;
+            $silo_tip_log = $silo_bilgi['tip'] ?? $silo_tip_log;
+        }
+    }
+
     if ($id > 0 && $baglanti->query("DELETE FROM silolar WHERE id=$id")) {
         $mesaj = "🗑️ Silo silindi.";
+        $aciklama = "Silo silindi: $silo_adi_log (ID: $id) | Tip: $silo_tip_log";
+        systemLogKaydet($baglanti, 'DELETE', 'Silo Yönetimi', $aciklama);
     } else {
         $hata = "Silinirken hata oluştu.";
     }
@@ -190,6 +209,11 @@ if (isset($_POST['silo_guncelle'])) {
 
         if ($baglanti->query($sql)) {
             $mesaj = "✅ Güncellendi.";
+            $izinli_log = !empty($izinli_kodlar) ? implode(',', $izinli_kodlar) : '-';
+            $aktif_kod_log = ($raw_aktif !== '') ? $raw_aktif : '-';
+            $plc_ip_log = ($plc_ip !== '') ? $plc_ip : '-';
+            $aciklama = "Silo güncellendi: $adi (ID: $id) | Kapasite: " . sayiFormat($kapasite, 2) . " m3 | Durum: $durum | Aktif Kod: $aktif_kod_log | PLC IP: $plc_ip_log | İzinli Kodlar: $izinli_log";
+            systemLogKaydet($baglanti, 'UPDATE', 'Silo Yönetimi', $aciklama);
         } else {
             $hata = "Güncelleme hatası: " . $baglanti->error;
         }
@@ -200,6 +224,21 @@ if (isset($_POST['silo_guncelle'])) {
 if (isset($_POST['silo_sifirla'])) {
     $id = (int) ($_POST['silo_id'] ?? 0);
     if ($id > 0) {
+        $silo_adi_log = "Bilinmeyen Silo";
+        $onceki_doluluk_log = 0;
+        $onceki_aktif_kod_log = '-';
+
+        $silo_bilgi_res = $baglanti->query("SELECT silo_adi, doluluk_m3, aktif_hammadde_kodu FROM silolar WHERE id=$id LIMIT 1");
+        if ($silo_bilgi_res && $silo_bilgi_res->num_rows > 0) {
+            $silo_bilgi = $silo_bilgi_res->fetch_assoc();
+            $silo_adi_log = $silo_bilgi['silo_adi'] ?? $silo_adi_log;
+            $onceki_doluluk_log = (float) ($silo_bilgi['doluluk_m3'] ?? 0);
+            $onceki_aktif_kod_log = trim((string) ($silo_bilgi['aktif_hammadde_kodu'] ?? ''));
+            if ($onceki_aktif_kod_log === '') {
+                $onceki_aktif_kod_log = '-';
+            }
+        }
+
         $baglanti->begin_transaction();
         try {
             $fifo_sql = "UPDATE silo_stok_detay 
@@ -218,6 +257,8 @@ if (isset($_POST['silo_sifirla'])) {
 
             $baglanti->commit();
             $mesaj = "Silo bosaltildi.";
+            $aciklama = "Silo boşaltıldı: $silo_adi_log (ID: $id) | Önceki Doluluk: " . sayiFormat($onceki_doluluk_log, 3) . " m3 | Önceki Aktif Kod: $onceki_aktif_kod_log";
+            systemLogKaydet($baglanti, 'UPDATE', 'Silo Yönetimi', $aciklama);
         } catch (Throwable $e) {
             $baglanti->rollback();
             $hata = "Silo bosaltma hatasi: " . $e->getMessage();
@@ -232,6 +273,21 @@ if (isset($_POST['silo_manuel_belirle'])) {
     $yeni_hek  = (float)($_POST['yeni_hek'] ?? 0);
 
     if ($id > 0 && $yeni_kg > 0 && $yeni_hek > 0) {
+        $silo_adi_log = "Bilinmeyen Silo";
+        $onceki_doluluk_log = 0;
+        $onceki_aktif_kod_log = '-';
+
+        $silo_bilgi_res = $baglanti->query("SELECT silo_adi, doluluk_m3, aktif_hammadde_kodu FROM silolar WHERE id=$id LIMIT 1");
+        if ($silo_bilgi_res && $silo_bilgi_res->num_rows > 0) {
+            $silo_bilgi = $silo_bilgi_res->fetch_assoc();
+            $silo_adi_log = $silo_bilgi['silo_adi'] ?? $silo_adi_log;
+            $onceki_doluluk_log = (float) ($silo_bilgi['doluluk_m3'] ?? 0);
+            $onceki_aktif_kod_log = trim((string) ($silo_bilgi['aktif_hammadde_kodu'] ?? ''));
+            if ($onceki_aktif_kod_log === '') {
+                $onceki_aktif_kod_log = '-';
+            }
+        }
+
         $baglanti->begin_transaction();
         try {
             // Hangi ürün var siloda? (Eğer POST ile gönderildiyse onu kullan, yoksa silonun aktif kodunu kullan)
@@ -259,18 +315,27 @@ if (isset($_POST['silo_manuel_belirle'])) {
             $ins_lab = "INSERT INTO lab_analizleri (parti_no, hektolitre, tarih) VALUES ('$custom_parti_no', $yeni_hek, NOW())";
             if (!$baglanti->query($ins_lab)) throw new Exception($baglanti->error);
 
-            // 5) doluluk_m3 yeniden hesapla
-            $yogunluk_sql = "SELECT COALESCE(yogunluk_kg_m3, 780) AS yog FROM hammaddeler WHERE hammadde_kodu = '$aktif_hammadde_kodu'";
-            $yog_res = $baglanti->query($yogunluk_sql);
-            $yogunluk = $yog_res && $yog_res->num_rows > 0 ? (float)($yog_res->fetch_assoc()['yog']) : 780;
-            if ($yogunluk <= 0) $yogunluk = 780;
+            // 5) doluluk_m3 yeniden hesapla (Girilen hektolitre oradan m3 hesabı)
+            $yeni_yogunluk = $yeni_hek * 10;
+            if ($yeni_yogunluk <= 0) {
+                $yogunluk_sql = "SELECT COALESCE(yogunluk_kg_m3, 780) AS yog FROM hammaddeler WHERE hammadde_kodu = '$aktif_hammadde_kodu'";
+                $yog_res = $baglanti->query($yogunluk_sql);
+                $yeni_yogunluk = ($yog_res && $yog_res->num_rows > 0) ? (float)($yog_res->fetch_assoc()['yog']) : 780;
+            }
+            if ($yeni_yogunluk <= 0) $yeni_yogunluk = 780;
 
-            $yeni_doluluk_m3 = $yeni_kg / $yogunluk;
+            $yeni_doluluk_m3 = $yeni_kg / $yeni_yogunluk;
             $upd_silo = "UPDATE silolar SET doluluk_m3=$yeni_doluluk_m3 WHERE id=$id";
             if (!$baglanti->query($upd_silo)) throw new Exception($baglanti->error);
 
             $baglanti->commit();
             $mesaj = "✅ Silo değeri manuel olarak " . number_format($yeni_kg, 0, ',', '.') . " kg ve $yeni_hek Hektolitre yapıldı.";
+            $aktif_kod_log = trim((string) ($aktif_hammadde_kodu ?? ''));
+            if ($aktif_kod_log === '') {
+                $aktif_kod_log = '-';
+            }
+            $aciklama = "Silo seviyesi manuel belirlendi: $silo_adi_log (ID: $id) | Yeni Miktar: " . sayiFormat($yeni_kg, 0) . " kg | Yeni Hektolitre: " . sayiFormat($yeni_hek, 2) . " | Yeni Doluluk: " . sayiFormat($yeni_doluluk_m3, 3) . " m3 | Aktif Kod: $aktif_kod_log | Önceki Doluluk: " . sayiFormat($onceki_doluluk_log, 3) . " m3 | Önceki Aktif Kod: $onceki_aktif_kod_log | Parti: $custom_parti_no";
+            systemLogKaydet($baglanti, 'UPDATE', 'Silo Yönetimi', $aciklama);
         } catch (Throwable $e) {
             $baglanti->rollback();
             $hata = "Manuel belirleme hatası: " . $e->getMessage();
@@ -775,7 +840,7 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
                     <div class="mb-3"><label>Adı</label><input type="text" name="silo_adi" class="form-control"
                             required></div>
                     <div class="mb-3"><label>Tipi</label>
-                        <select name="tip" class="form-select">
+                        <select name="tip" id="new_silo_tip" class="form-select" onchange="filterHammaddeList('new')">
                             <option value="bugday">Buğday Silosu</option>
                             <option value="un">Un Silosu</option>
                             <option value="tav">Tav Silosu</option>
@@ -794,7 +859,7 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
                         <label>Sadece Bunlar Girebilir (istege bagli):</label>
                         <div class="border rounded p-2 bg-light" style="height:140px; overflow-y:auto;">
                             <?php foreach ($hammadde_listesi as $h) { ?>
-                                <div class="form-check">
+                                <div class="form-check hammadde-item" data-kod="<?php echo $h['hammadde_kodu']; ?>">
                                     <input type="checkbox" name="yeni_izinli_kodlar[]"
                                         value="<?php echo $h['hammadde_kodu']; ?>"
                                         id="new_chk_<?php echo $h['hammadde_kodu']; ?>" class="form-check-input">
@@ -845,17 +910,17 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
                             <h6 class="text-primary border-bottom pb-2">İçerik & Kısıtlama</h6>
                             <div class="mb-3">
                                 <label>İçindeki Ürün</label>
-                                <select name="aktif_hammadde_kodu" id="edit_aktif_kod" class="form-select">
+                                <select name="aktif_hammadde_kodu" id="edit_aktif_kod" class="form-select hammadde-select">
                                     <option value="">-- Boş --</option>
                                     <?php foreach ($hammadde_listesi as $h)
-                                        echo "<option value='{$h['hammadde_kodu']}'>{$h['hammadde_kodu']}</option>"; ?>
+                                        echo "<option value='{$h['hammadde_kodu']}' class='hammadde-opt' data-kod='{$h['hammadde_kodu']}'>{$h['hammadde_kodu']}</option>"; ?>
                                 </select>
                             </div>
                             <div class="mb-2">
                                 <label>Sadece Bunlar Girebilir:</label>
                                 <div class="border rounded p-2 bg-light" style="height:150px; overflow-y:auto;">
                                     <?php foreach ($hammadde_listesi as $h) { ?>
-                                        <div class="form-check">
+                                        <div class="form-check hammadde-item" data-kod="<?php echo $h['hammadde_kodu']; ?>">
                                             <input type="checkbox" name="izinli_kodlar[]"
                                                 value="<?php echo $h['hammadde_kodu']; ?>"
                                                 id="chk_<?php echo $h['hammadde_kodu']; ?>"
@@ -924,33 +989,15 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
         </div>
     </div>
 
-    <div class="modal fade" id="sifirlaModal" tabindex="-1">
-        <div class="modal-dialog">
-            <form method="post" class="modal-content">
-                <div class="modal-body">
-                    <input type="hidden" name="silo_id" id="sifirla_id">
-                    <p><strong><span id="sifirla_adi"></span></strong> boşaltılsın mı?</p>
-                    <div class="text-end">
-                        <button type="submit" name="silo_sifirla" class="btn btn-warning">Boşalt</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
+    <form method="post" id="sifirlaForm" class="d-none">
+        <input type="hidden" name="silo_id" id="sifirla_id">
+        <input type="hidden" name="silo_sifirla" value="1">
+    </form>
 
-    <div class="modal fade" id="silModal" tabindex="-1">
-        <div class="modal-dialog">
-            <form method="post" class="modal-content">
-                <div class="modal-body">
-                    <input type="hidden" name="silo_id" id="sil_id">
-                    <p class="text-danger"><strong><span id="sil_adi"></span></strong> silinecek. Emin misin?</p>
-                    <div class="text-end">
-                        <button type="submit" name="silo_sil" class="btn btn-danger">Sil</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
+    <form method="post" id="silForm" class="d-none">
+        <input type="hidden" name="silo_id" id="sil_id">
+        <input type="hidden" name="silo_sil" value="1">
+    </form>
 
     <div class="modal fade" id="labAnalizModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -1083,8 +1130,46 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
                     } catch (e) { }
                 }
             }
+            
+            // Filtreleme uygula
+            filterHammaddeList('edit', tip);
 
             new bootstrap.Modal(document.getElementById('duzenleModal')).show();
+        }
+
+        function filterHammaddeList(context, ForcedTip = null) {
+            let tip = ForcedTip;
+            if(!tip) {
+                if(context === 'new') tip = document.getElementById('new_silo_tip').value;
+                else tip = 'bugday'; // Default fallback
+            }
+
+            const modalId = (context === 'new') ? 'yeniSiloModal' : 'duzenleModal';
+            const modalEl = document.getElementById(modalId);
+            if(!modalEl) return;
+
+            const items = modalEl.querySelectorAll('.hammadde-item');
+            const opts = modalEl.querySelectorAll('.hammadde-opt');
+
+            const isWheatSilo = (tip === 'bugday');
+
+            const filterFn = (kod) => {
+                if (!kod) return true;
+                const c = kod.trim().charAt(0).toUpperCase();
+                const isWheatCode = (c === 'D' || c === 'K' || c === 'B');
+                if (!isWheatSilo && isWheatCode) return false; // Buğday değilse ve kod buğdaysa gizle
+                return true;
+            };
+
+            items.forEach(item => {
+                const kod = item.getAttribute('data-kod');
+                item.style.display = filterFn(kod) ? 'block' : 'none';
+            });
+
+            opts.forEach(opt => {
+                const kod = opt.getAttribute('data-kod');
+                opt.style.display = filterFn(kod) ? 'block' : 'none';
+            });
         }
 
         function manuelSeviyeModalAc(id, adi, mevcutKg, aktifGirenKod = '', kategori = 'bugday') {
@@ -1114,14 +1199,40 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
 
         function sifirlaModal(id, adi) {
             document.getElementById('sifirla_id').value = id;
-            document.getElementById('sifirla_adi').innerText = adi;
-            new bootstrap.Modal(document.getElementById('sifirlaModal')).show();
+            Swal.fire({
+                title: 'Silo Boşaltma Onayı',
+                html: `<strong>${adi}</strong> içeriği tamamen boşaltılacak.<br>Bu işlem geri alınamaz.`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#f59e0b',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Evet, Boşalt',
+                cancelButtonText: 'İptal',
+                focusCancel: true
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('sifirlaForm').submit();
+                }
+            });
         }
 
         function silModal(id, adi) {
             document.getElementById('sil_id').value = id;
-            document.getElementById('sil_adi').innerText = adi;
-            new bootstrap.Modal(document.getElementById('silModal')).show();
+            Swal.fire({
+                title: 'Silo Silme Onayı',
+                html: `<strong>${adi}</strong> kalıcı olarak silinecek.<br>Bu işlem geri alınamaz.`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Evet, Sil',
+                cancelButtonText: 'İptal',
+                focusCancel: true
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('silForm').submit();
+                }
+            });
         }
 
         function labDegerFormat(value) {

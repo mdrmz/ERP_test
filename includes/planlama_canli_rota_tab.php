@@ -9,7 +9,7 @@ if (isset($_POST['baslat_rota'])) {
     if($kaynak > 0 && $hedef > 0 && $kaynak != $hedef) {
         $sql = "INSERT INTO canli_silo_transferleri (kaynak_silo_id, hedef_silo_id, baslangic_tarihi, son_guncelleme, durum) VALUES ($kaynak, $hedef, NOW(), NOW(), 'devam_ediyor')";
         $baglanti->query($sql);
-        echo "<script>window.location.href='planlama.php?tab=canli_rota&msg=rota_olusturuldu';</script>";
+        echo "<script>window.location.href='{$_SERVER['PHP_SELF']}?tab=canli_rota&msg=rota_olusturuldu';</script>";
         exit;
     } else {
         echo "<script>alert('Kaynak ve hedef geçerli/farklı olmalı.');</script>";
@@ -19,20 +19,20 @@ if (isset($_POST['baslat_rota'])) {
 if (isset($_GET['durdur_rota'])) {
     $id = (int)$_GET['durdur_rota'];
     $baglanti->query("UPDATE canli_silo_transferleri SET durum='durduruldu', son_guncelleme=NOW() WHERE id=$id");
-    echo "<script>window.location.href='planlama.php?tab=canli_rota';</script>";
+    echo "<script>window.location.href='{$_SERVER['PHP_SELF']}?tab=canli_rota';</script>";
     exit;
 }
 
 if (isset($_GET['tamamla_rota'])) {
     $id = (int)$_GET['tamamla_rota'];
     $baglanti->query("UPDATE canli_silo_transferleri SET durum='tamamlandi', son_guncelleme=NOW() WHERE id=$id");
-    echo "<script>window.location.href='planlama.php?tab=canli_rota';</script>";
+    echo "<script>window.location.href='{$_SERVER['PHP_SELF']}?tab=canli_rota';</script>";
     exit;
 }
 if (isset($_GET['sil_rota'])) {
     $id = (int)$_GET['sil_rota'];
     $baglanti->query("DELETE FROM canli_silo_transferleri WHERE id=$id");
-    echo "<script>window.location.href='planlama.php?tab=canli_rota';</script>";
+    echo "<script>window.location.href='{$_SERVER['PHP_SELF']}?tab=canli_rota';</script>";
     exit;
 }
 

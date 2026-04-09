@@ -10,7 +10,7 @@ $bekleyen_araclar_sorgu = "
       AND (hg.silo_id IS NULL OR hg.silo_id = 0)
       AND hka.asama = 'tamamlandi' 
       AND hka.onay_durum NOT IN ('reddedildi', 'satinalma_red')
-    ORDER BY hg.tarih ASC
+    ORDER BY hg.tarih ASC, hg.id ASC
 ";
 $bekleyen_araclar = $baglanti->query($bekleyen_araclar_sorgu);
 ?>

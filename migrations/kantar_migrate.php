@@ -59,6 +59,7 @@ $createKantar = "CREATE TABLE IF NOT EXISTS `kantar_okumalari` (
     `source_url` VARCHAR(255) DEFAULT NULL,
     `plaka_raw` VARCHAR(32) DEFAULT NULL,
     `plaka_norm` VARCHAR(32) DEFAULT NULL,
+    `sefer_anahtar` CHAR(64) DEFAULT NULL,
     `tartim_tarihi` DATE DEFAULT NULL,
     `tartim_saati` TIME DEFAULT NULL,
     `tartim_zamani` DATETIME DEFAULT NULL,
@@ -86,6 +87,28 @@ if (!kmIndexExists($baglanti, 'kantar_okumalari', 'uq_kantar_veri_hash')) {
     );
 } else {
     kmLog('SKIP: uq_kantar_veri_hash zaten var.');
+}
+
+if (!kmColumnExists($baglanti, 'kantar_okumalari', 'sefer_anahtar')) {
+    kmRun(
+        $baglanti,
+        "ALTER TABLE `kantar_okumalari` ADD COLUMN `sefer_anahtar` CHAR(64) NULL AFTER `plaka_norm`",
+        'kantar_okumalari.sefer_anahtar eklendi.',
+        'kantar_okumalari.sefer_anahtar eklenemedi'
+    );
+} else {
+    kmLog('SKIP: kantar_okumalari.sefer_anahtar zaten var.');
+}
+
+if (!kmIndexExists($baglanti, 'kantar_okumalari', 'uq_kantar_sefer_anahtar')) {
+    kmRun(
+        $baglanti,
+        "ALTER TABLE `kantar_okumalari` ADD UNIQUE KEY `uq_kantar_sefer_anahtar` (`sefer_anahtar`)",
+        'uq_kantar_sefer_anahtar eklendi.',
+        'uq_kantar_sefer_anahtar eklenemedi'
+    );
+} else {
+    kmLog('SKIP: uq_kantar_sefer_anahtar zaten var.');
 }
 
 if (!kmIndexExists($baglanti, 'kantar_okumalari', 'idx_kantar_plaka_zaman')) {

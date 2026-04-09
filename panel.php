@@ -87,7 +87,10 @@ if ($yetki == 'admin') {
 // Lab: Bekleyen Analiz
 $bekleyen_analiz = 0;
 if ($yetki == 'lab' || $yetki == 'admin') {
-    $analiz_result = @$baglanti->query("SELECT COUNT(*) as cnt FROM hammadde_girisleri WHERE analiz_yapildi = 0");
+    $analiz_result = @$baglanti->query("SELECT COUNT(*) as cnt
+                                        FROM hammadde_girisleri
+                                        WHERE analiz_yapildi = 0
+                                          AND (islem_turu IS NULL OR islem_turu <> 'yukleme')");
     if ($analiz_result) {
         $bekleyen_analiz = $analiz_result->fetch_assoc()['cnt'] ?? 0;
     }
@@ -444,7 +447,7 @@ $aciklama = $panel_basliklar[$yetki]['açıklama'] ?? '';
                             <h5 class="card-title mb-0 fw-bold"><i class="fas fa-database text-secondary me-2"></i>Silo
                                 Doluluk Oranları</h5>
                             <?php if ($yetki == 'admin' || $yetki == 'uretim' || $yetki == 'satin_alma') { ?>
-                                <a href="hammadde.php" class="btn btn-sm btn-outline-primary">Hammadde Girişi Yap</a>
+                                <a href="hammadde.php" class="btn btn-sm btn-outline-primary">Araç Kabul Girişi Yap</a>
                             <?php } ?>
                         </div>
 
@@ -648,7 +651,7 @@ $aciklama = $panel_basliklar[$yetki]['açıklama'] ?? '';
                                 <div class="col-md-6">
                                     <a href="hammadde.php" class="quick-link text-decoration-none">
                                         <i class="fas fa-truck-loading bg-warning text-dark p-2 rounded"></i>
-                                        <span class="fw-semibold">Hammadde</span>
+                                        <span class="fw-semibold">Araç Kabul</span>
                                         <i class="fas fa-chevron-right ms-auto text-muted"></i>
                                     </a>
                                 </div>
@@ -725,7 +728,7 @@ $aciklama = $panel_basliklar[$yetki]['açıklama'] ?? '';
                                 <div class="col-md-6">
                                     <a href="lab_analizleri.php" class="quick-link text-decoration-none">
                                         <i class="fas fa-flask bg-danger text-white p-2 rounded"></i>
-                                        <span class="fw-semibold">Lab Analiz</span>
+                                        <span class="fw-semibold">Hammadde Analiz</span>
                                         <i class="fas fa-chevron-right ms-auto text-muted"></i>
                                     </a>
                                 </div>

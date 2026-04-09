@@ -19,8 +19,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$yazma_yetkisi) {
     die("Bu işlem için yazma yetkiniz bulunmamaktadır.");
 }
 
+$is_patron = (($_SESSION['rol_adi'] ?? '') === 'Patron') || ((int) ($_SESSION['rol_id'] ?? 0) === 1);
 $mesaj = "";
 $hata  = "";
+$gecmis_form_acik = $is_patron && isset($_POST['giris_yap']) && (int)($_POST['gecmis_mod'] ?? 0) === 1;
 
 // ─────────────────────────────────────────────
 // YENİ ARAÇ GİRİŞİ
@@ -28,25 +30,80 @@ $hata  = "";
 if (isset($_POST["giris_yap"])) {
     $plaka     = strtoupper(trim($baglanti->real_escape_string($_POST["plaka"] ?? '')));
     $tedarikci = trim($baglanti->real_escape_string($_POST["tedarikci"] ?? ''));
+    $islem_turu = trim((string)($_POST["islem_turu"] ?? ''));
+    $gecmis_mod = $is_patron && ((int)($_POST["gecmis_mod"] ?? 0) === 1);
+    $gecmis_tarih_raw = trim((string)($_POST["gecmis_tarih"] ?? ''));
+    $gecmis_saat_raw = trim((string)($_POST["gecmis_saat"] ?? ''));
+    $gecmis_tarih_sql = null;
+    $gecmis_tarih_log = '';
 
-    if ($plaka === '' || $tedarikci === '') {
-        $hata = "Plaka ve Tedarikçi alanları zorunludur.";
+    if ($plaka === '' || $tedarikci === '' || !in_array($islem_turu, ['yukleme', 'bosaltma'], true)) {
+        $hata = "Plaka, Tedarikçi ve İşlem Türü alanları zorunludur.";
     } else {
+        if ($gecmis_mod) {
+            if ($gecmis_tarih_raw === '' || $gecmis_saat_raw === '') {
+                $hata = "Geçmiş giriş için tarih ve saat alanları zorunludur.";
+            } else {
+                $gecmis_birlesik = $gecmis_tarih_raw . ' ' . $gecmis_saat_raw;
+                $gecmis_dt = DateTime::createFromFormat('Y-m-d H:i', $gecmis_birlesik);
+                $gecmis_hata = DateTime::getLastErrors();
+                $gecerli_dt = ($gecmis_dt instanceof DateTime)
+                    && ($gecmis_hata === false || ((int)$gecmis_hata['warning_count'] === 0 && (int)$gecmis_hata['error_count'] === 0))
+                    && ($gecmis_dt->format('Y-m-d H:i') === $gecmis_birlesik);
+
+                if (!$gecerli_dt) {
+                    $hata = "Geçmiş tarih/saat formatı geçersizdir.";
+                } else {
+                    $simdi = new DateTime('now');
+                    if ($gecmis_dt > $simdi) {
+                        $hata = "Geçmiş giriş tarihi gelecekte olamaz.";
+                    } else {
+                        $gecmis_tarih_sql = $baglanti->real_escape_string($gecmis_dt->format('Y-m-d H:i:s'));
+                        $gecmis_tarih_log = $gecmis_dt->format('d.m.Y H:i');
+                    }
+                }
+            }
+        }
+    }
+
+    if ($hata === '') {
         // parti_no: NOT NULL alanı — otomatik üret (YYYYMMDD-PLAKA-random)
         $parti_no = date('Ymd') . '-' . preg_replace('/[^A-Z0-9]/', '', $plaka) . '-' . strtoupper(substr(md5(uniqid()), 0, 5));
         $parti_no = $baglanti->real_escape_string($parti_no);
         $personel = $baglanti->real_escape_string($_SESSION['kadi'] ?? '');
+        $islem_turu_sql = $baglanti->real_escape_string($islem_turu);
+        $islem_turu_label = ($islem_turu === 'bosaltma') ? 'Boşaltma' : 'Yükleme';
 
-        $sql = "INSERT INTO hammadde_girisleri
-                    (arac_plaka, tedarikci, parti_no, personel, miktar_kg, giris_m3, analiz_yapildi)
-                VALUES
-                    ('$plaka', '$tedarikci', '$parti_no', '$personel', 0, 0, 0)";
+        if ($gecmis_mod && $gecmis_tarih_sql !== null) {
+            $sql = "INSERT INTO hammadde_girisleri
+                        (tarih, arac_plaka, tedarikci, islem_turu, parti_no, personel, miktar_kg, giris_m3, analiz_yapildi)
+                    VALUES
+                        ('$gecmis_tarih_sql', '$plaka', '$tedarikci', '$islem_turu_sql', '$parti_no', '$personel', 0, 0, 0)";
+        } else {
+            $sql = "INSERT INTO hammadde_girisleri
+                        (arac_plaka, tedarikci, islem_turu, parti_no, personel, miktar_kg, giris_m3, analiz_yapildi)
+                    VALUES
+                        ('$plaka', '$tedarikci', '$islem_turu_sql', '$parti_no', '$personel', 0, 0, 0)";
+        }
 
         if ($baglanti->query($sql)) {
-            if (function_exists('systemLogKaydet')) {
-                systemLogKaydet($baglanti, 'INSERT', 'Hammadde Kabul',
-                    "Yeni araç girişi: $plaka | Tedarikçi: $tedarikci");
+            $yeni_giris_id = (int)$baglanti->insert_id;
+
+            if (function_exists('akisOlustur') && $yeni_giris_id > 0 && $islem_turu !== 'yukleme') {
+                $tablo_kontrol = @$baglanti->query("SHOW TABLES LIKE 'hammadde_kabul_akisi'");
+                if ($tablo_kontrol && $tablo_kontrol->num_rows > 0) {
+                    akisOlustur($baglanti, $yeni_giris_id);
+                }
             }
+
+            if (function_exists('systemLogKaydet')) {
+                $log_mesaji = "Yeni araç kabul kaydı: $plaka | Tedarikçi: $tedarikci | İşlem Türü: $islem_turu_label";
+                if ($gecmis_mod && $gecmis_tarih_log !== '') {
+                    $log_mesaji .= " | Geçmiş Tarih: $gecmis_tarih_log";
+                }
+                systemLogKaydet($baglanti, 'INSERT', 'Araç Kabul', $log_mesaji);
+            }
+
             header("Location: hammadde.php?giris=ok&plaka=" . urlencode($plaka));
             exit;
         } else {
@@ -54,8 +111,6 @@ if (isset($_POST["giris_yap"])) {
         }
     }
 }
-
-// Başarı mesajı
 if (isset($_GET['giris']) && $_GET['giris'] === 'ok') {
     $mesaj = "✅ " . htmlspecialchars($_GET['plaka'] ?? '') . " plakalı araç başarıyla kaydedildi.";
 }
@@ -86,18 +141,21 @@ if (isset($_POST["kayit_duzenle"])) {
     $duzenle_id  = (int)($_POST["duzenle_id"] ?? 0);
     $yeni_plaka  = strtoupper(trim($baglanti->real_escape_string($_POST["d_plaka"] ?? '')));
     $yeni_ted    = trim($baglanti->real_escape_string($_POST["d_tedarikci"] ?? ''));
+    $yeni_islem_turu = trim((string)($_POST["d_islem_turu"] ?? ''));
 
-    if ($duzenle_id <= 0 || $yeni_plaka === '' || $yeni_ted === '') {
-        $hata = "Plaka ve Tedarikçi alanları zorunludur.";
+    if ($duzenle_id <= 0 || $yeni_plaka === '' || $yeni_ted === '' || !in_array($yeni_islem_turu, ['yukleme', 'bosaltma'], true)) {
+        $hata = "Plaka, Tedarikçi ve İşlem Türü alanları zorunludur.";
     } else {
         // Sadece analiz_yapildi=0 olan kayıtlar düzenlenebilir
         $kontrol = $baglanti->query("SELECT id FROM hammadde_girisleri WHERE id=$duzenle_id AND analiz_yapildi=0 LIMIT 1");
         if ($kontrol && $kontrol->num_rows > 0) {
-            $sql_upd = "UPDATE hammadde_girisleri SET arac_plaka='$yeni_plaka', tedarikci='$yeni_ted' WHERE id=$duzenle_id";
+            $yeni_islem_turu_sql = $baglanti->real_escape_string($yeni_islem_turu);
+            $yeni_islem_turu_label = ($yeni_islem_turu === 'bosaltma') ? 'Boşaltma' : 'Yükleme';
+            $sql_upd = "UPDATE hammadde_girisleri SET arac_plaka='$yeni_plaka', tedarikci='$yeni_ted', islem_turu='$yeni_islem_turu_sql' WHERE id=$duzenle_id";
             if ($baglanti->query($sql_upd)) {
                 if (function_exists('systemLogKaydet')) {
-                    systemLogKaydet($baglanti, 'UPDATE', 'Hammadde Kabul Düzenleme',
-                        "ID:$duzenle_id | Plaka: $yeni_plaka | Tedarikçi: $yeni_ted");
+                    systemLogKaydet($baglanti, 'UPDATE', 'Araç Kabul Düzenleme',
+                        "ID:$duzenle_id | Plaka: $yeni_plaka | Tedarikçi: $yeni_ted | İşlem Türü: $yeni_islem_turu_label");
                 }
                 $mesaj = "✅ Kayıt güncellendi.";
             } else {
@@ -132,7 +190,7 @@ if ($f_arama !== '') {
 // LİSTE
 // ─────────────────────────────────────────────
 $sql_liste = "SELECT hg.id, hg.tarih, hg.arac_plaka, hg.tedarikci, hg.analiz_yapildi,
-                     hg.parti_no, hg.hammadde_id, h.ad AS hammadde_adi
+                     hg.parti_no, hg.hammadde_id, hg.islem_turu, h.ad AS hammadde_adi
               FROM hammadde_girisleri hg
               LEFT JOIN hammaddeler h ON h.id = hg.hammadde_id
               $where
@@ -149,12 +207,13 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hammadde Kabul - Özbal Un</title>
+    <title>Araç Kabul - Özbal Un</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.min.css" rel="stylesheet">
     <style>
         :root {
             --primary:  #0f172a;
@@ -387,34 +446,22 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
     <div class="page-header">
         <div class="row align-items-center">
             <div class="col">
-                <h2 class="fw-bold mb-1"><i class="fas fa-truck-loading me-2"></i>Hammadde Kabul</h2>
-                <p class="mb-0" style="color:rgba(255,255,255,.75)">Gelen araçların tedarikçi ve plaka kaydı</p>
+                <h2 class="fw-bold mb-1"><i class="fas fa-truck-loading me-2"></i>Araç Kabul</h2>
+                <p class="mb-0" style="color:rgba(255,255,255,.75)">Gelen araçların tedarikçi, plaka ve işlem türü kaydı</p>
             </div>
         </div>
     </div>
 
-    <?php if ($mesaj): ?>
-        <div class="alert alert-success alert-dismissible fade show border-0 shadow-sm" role="alert">
-            <i class="fas fa-check-circle me-2"></i><?php echo $mesaj; ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
-    <?php if ($hata): ?>
-        <div class="alert alert-danger alert-dismissible fade show border-0 shadow-sm" role="alert">
-            <i class="fas fa-exclamation-circle me-2"></i><?php echo $hata; ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
-
     <!-- ─── GİRİŞ FORMU ─── -->
     <div class="card">
         <div class="card-header" style="background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;">
-            <h5 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Yeni Araç Girişi</h5>
+            <h5 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Yeni Araç Kabul Kaydı</h5>
         </div>
         <div class="card-body p-4">
             <form method="post" id="girisForm">
+                <input type="hidden" name="gecmis_mod" id="gecmis_mod_input" value="<?php echo $gecmis_form_acik ? '1' : '0'; ?>">
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-5">
+                    <div class="col-md-4">
                         <label class="form-label">Tedarikçi Firma <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <span class="input-group-text bg-white"><i class="fas fa-building text-muted"></i></span>
@@ -424,7 +471,7 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
                                    required autocomplete="off">
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">Araç Plaka <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <span class="input-group-text bg-white"><i class="fas fa-car text-muted"></i></span>
@@ -436,14 +483,49 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
                         </div>
                     </div>
                     <div class="col-md-3">
+                        <label class="form-label">İşlem Türü <span class="text-danger">*</span></label>
+                        <select name="islem_turu" id="alan_islem_turu" class="form-select" required>
+                            <option value="">Seçin...</option>
+                            <option value="yukleme" <?php echo (($_POST['islem_turu'] ?? '') === 'yukleme') ? 'selected' : ''; ?>>Yükleme</option>
+                            <option value="bosaltma" <?php echo (($_POST['islem_turu'] ?? '') === 'bosaltma') ? 'selected' : ''; ?>>Boşaltma</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
                         <button type="submit" name="giris_yap" class="btn btn-save w-100">
                             <i class="fas fa-save me-2"></i>Kaydet
                         </button>
                     </div>
                 </div>
+                <?php if ($is_patron): ?>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="gecmisToggleBtn" aria-expanded="<?php echo $gecmis_form_acik ? 'true' : 'false'; ?>">
+                            <i class="fas <?php echo $gecmis_form_acik ? 'fa-calendar-minus' : 'fa-calendar-plus'; ?> me-1"></i>
+                            <?php echo $gecmis_form_acik ? 'Geçmiş Tarihli Girişi Kapat' : 'Geçmiş Tarihli Giriş'; ?>
+                        </button>
+                    </div>
+
+                    <div class="row g-3 mt-1" id="gecmisAlan" style="display: <?php echo $gecmis_form_acik ? 'flex' : 'none'; ?>;">
+                        <div class="col-md-3">
+                            <label class="form-label">Geçmiş Tarih <span class="text-danger">*</span></label>
+                            <input type="date" name="gecmis_tarih" class="form-control"
+                                   value="<?php echo htmlspecialchars($_POST['gecmis_tarih'] ?? ''); ?>"
+                                   max="<?php echo date('Y-m-d'); ?>">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Geçmiş Saat <span class="text-danger">*</span></label>
+                            <input type="time" name="gecmis_saat" class="form-control"
+                                   value="<?php echo htmlspecialchars($_POST['gecmis_saat'] ?? ''); ?>">
+                        </div>
+                    </div>
+
+                    <p class="text-muted small mt-2 mb-0" id="gecmisBilgi" style="display: <?php echo $gecmis_form_acik ? 'block' : 'none'; ?>;">
+                        <i class="fas fa-history me-1"></i>
+                        Geçmiş tarihli girişte tarih-saat alanları zorunludur ve gelecek tarih seçilemez.
+                    </p>
+                <?php endif; ?>
                 <p class="text-muted small mt-3 mb-0">
                     <i class="fas fa-info-circle me-1"></i>
-                    Hammadde cinsi ve parti numarası daha sonra <strong>Lab Analizleri</strong> sayfasından girilecektir.
+                    Hammadde cinsi ve parti numarası daha sonra <strong>Hammadde Analiz</strong> sayfasından girilecektir.
                 </p>
             </form>
         </div>
@@ -494,7 +576,7 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
     <!-- ─── KAYIT LİSTESİ ─── -->
     <div class="card">
         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fas fa-history me-2"></i>Son Hammadde Girişleri</h5>
+            <h5 class="mb-0"><i class="fas fa-history me-2"></i>Son Araç Kabul Kayıtları</h5>
             <?php if ($liste): ?>
                 <span class="badge" style="background:var(--accent);color:#000;font-size:.8rem;">
                     <?php echo $liste->num_rows; ?> kayıt
@@ -509,6 +591,7 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
                         <th>Tarih</th>
                         <th>Plaka</th>
                         <th>Tedarikçi</th>
+                        <th>İşlem Türü</th>
                         <th>Hammadde Cinsi</th>
                         <th>Durum</th>
                         <th class="text-center">İşlem</th>
@@ -518,10 +601,12 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
                     <?php if ($liste && $liste->num_rows > 0):
                         while ($row = $liste->fetch_assoc()):
                             $is_analiz = (int)($row['analiz_yapildi'] ?? 0);
+                            $islem_turu_kayit = (string)($row['islem_turu'] ?? '');
+                            $is_yukleme = ($islem_turu_kayit === 'yukleme');
                     ?>
                     <tr>
                         <td class="text-muted small"><?php echo $row['id']; ?></td>
-                        <td>
+                        <td data-order="<?php echo strtotime($row['tarih']); ?>">
                             <div class="fw-500" style="font-size:.875rem;">
                                 <?php echo date('d.m.Y', strtotime($row['tarih'])); ?>
                             </div>
@@ -536,16 +621,33 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
                             <?php echo htmlspecialchars($row['tedarikci'] ?? '-'); ?>
                         </td>
                         <td>
+                            <?php if ($islem_turu_kayit === 'yukleme'): ?>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Yükleme</span>
+                            <?php elseif ($islem_turu_kayit === 'bosaltma'): ?>
+                                <span class="badge bg-info-subtle text-info border border-info-subtle">Boşaltma</span>
+                            <?php else: ?>
+                                <span class="badge bg-light text-muted border">Bilinmiyor</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
                             <?php if (!empty($row['hammadde_adi'])): ?>
                                 <span class="badge bg-secondary bg-opacity-10 text-secondary border" style="font-size:.8rem;">
                                     <?php echo htmlspecialchars($row['hammadde_adi']); ?>
+                                </span>
+                            <?php elseif ($is_yukleme): ?>
+                                <span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:.8rem;">
+                                    Yükleme Kaydı
                                 </span>
                             <?php else: ?>
                                 <span class="text-muted small"><i class="fas fa-clock me-1"></i>Lab girişi bekleniyor</span>
                             <?php endif; ?>
                         </td>
                         <td>
-                            <?php if ($is_analiz === 2): ?>
+                            <?php if ($is_yukleme): ?>
+                                <span class="badge bg-info-subtle text-info border border-info-subtle py-1 px-2" style="font-size:.75rem;">
+                                    <i class="fas fa-truck-loading me-1"></i>Yüklemeye Uygun
+                                </span>
+                            <?php elseif ($is_analiz === 2): ?>
                                 <span class="badge badge-analiz-tamam py-1 px-2" style="font-size:.75rem;">
                                     <i class="fas fa-check-double me-1"></i>Analiz Tamamlandı
                                 </span>
@@ -563,7 +665,7 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
                             <?php if ($is_analiz === 0): ?>
                                 <div class="d-flex justify-content-center gap-1">
                                     <button class="btn btn-sm btn-outline-primary"
-                                            onclick="duzenleAc(<?php echo (int)$row['id']; ?>, '<?php echo htmlspecialchars($row['arac_plaka'] ?? '', ENT_QUOTES); ?>', '<?php echo htmlspecialchars($row['tedarikci'] ?? '', ENT_QUOTES); ?>')"
+                                            onclick="duzenleAc(<?php echo (int)$row['id']; ?>, '<?php echo htmlspecialchars($row['arac_plaka'] ?? '', ENT_QUOTES); ?>', '<?php echo htmlspecialchars($row['tedarikci'] ?? '', ENT_QUOTES); ?>', '<?php echo htmlspecialchars($row['islem_turu'] ?? '', ENT_QUOTES); ?>')"
                                             title="Düzenle">
                                         <i class="fas fa-edit"></i>
                                     </button>
@@ -581,7 +683,7 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
                     <?php endwhile;
                     else: ?>
                     <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
+                        <td colspan="8" class="text-center py-5 text-muted">
                             <i class="fas fa-inbox fa-2x mb-2 d-block opacity-30"></i>
                             Henüz kayıt bulunmuyor.
                         </td>
@@ -631,6 +733,14 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
                                    style="text-transform:uppercase;font-weight:700;letter-spacing:.5px;">
                         </div>
                     </div>
+                    <div class="mt-3">
+                        <label class="form-label">İşlem Türü <span class="text-danger">*</span></label>
+                        <select name="d_islem_turu" id="d_islem_turu" class="form-select" required>
+                            <option value="">Seçin...</option>
+                            <option value="yukleme">Yükleme</option>
+                            <option value="bosaltma">Boşaltma</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
@@ -649,11 +759,37 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.all.min.js"></script>
 
 <script>
     $(document).ready(function () {
+        <?php if (!empty($mesaj)): ?>
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: '<?php echo addslashes(str_replace(["✅ ", "✓ ", "⚠️ "], "", strip_tags($mesaj))); ?>',
+            showConfirmButton: false,
+            showCloseButton: true,
+            timer: 5000,
+            timerProgressBar: true,
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer);
+                toast.addEventListener('mouseleave', Swal.resumeTimer);
+            }
+        });
+        <?php endif; ?>
+
+        <?php if (!empty($hata)): ?>
+        Swal.fire({
+            icon: 'error',
+            title: 'Hata!',
+            text: '<?php echo addslashes(str_replace(["❌ ", "✖ ", "HATA: ", "⚠️ "], "", strip_tags($hata))); ?>',
+            confirmButtonColor: '#0f172a'
+        });
+        <?php endif; ?>
         var table = $('#hammaddeListe').DataTable({
-            order: [[1, 'desc']],
+            order: [[1, 'desc'], [0, 'desc']],
             pageLength: 25,
             lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'Tamamı']],
             searching: false, // Kendi arama kutusunu kapat
@@ -674,27 +810,76 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
                 }
             },
             columnDefs: [
-                { orderable: false, targets: 6 }   // İşlem sütunu sıralanamaz
+                { orderable: false, targets: 7 }   // İşlem sütunu sıralanamaz
             ],
             dom: '<"dt-top-row"l>rtip'
         });
+
     });
 
     function silOnay(id, plaka) {
-        if (confirm('⚠️ ' + plaka + ' plakalı aracın kaydı silinecek. Emin misiniz?')) {
-            document.getElementById('sil_id_input').value = id;
-            document.getElementById('silForm').submit();
-        }
+        Swal.fire({
+            title: 'Emin misiniz?',
+            text: plaka + ' plakali arac kaydi silinecek!',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonText: 'Vazgec',
+            confirmButtonText: 'Sil!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                document.getElementById('sil_id_input').value = id;
+                document.getElementById('silForm').submit();
+            }
+        });
     }
 
-    function duzenleAc(id, plaka, tedarikci) {
+    function duzenleAc(id, plaka, tedarikci, islemTuru) {
         document.getElementById('d_id').value        = id;
         document.getElementById('d_plaka').value     = plaka;
         document.getElementById('d_tedarikci').value = tedarikci;
+        document.getElementById('d_islem_turu').value = islemTuru;
         new bootstrap.Modal(document.getElementById('duzenleModal')).show();
     }
 
     // Plaka alanları otomatik büyük harf
+    const gecmisToggleBtn = document.getElementById('gecmisToggleBtn');
+    const gecmisAlan = document.getElementById('gecmisAlan');
+    const gecmisBilgi = document.getElementById('gecmisBilgi');
+    const gecmisModInput = document.getElementById('gecmis_mod_input');
+    const gecmisTarihInput = document.querySelector('input[name="gecmis_tarih"]');
+    const gecmisSaatInput = document.querySelector('input[name="gecmis_saat"]');
+
+    function gecmisAlaniDurumunuAyarla(acik) {
+        if (!gecmisAlan || !gecmisModInput || !gecmisToggleBtn) {
+            return;
+        }
+
+        gecmisAlan.style.display = acik ? 'flex' : 'none';
+        if (gecmisBilgi) {
+            gecmisBilgi.style.display = acik ? 'block' : 'none';
+        }
+        gecmisModInput.value = acik ? '1' : '0';
+        gecmisToggleBtn.setAttribute('aria-expanded', acik ? 'true' : 'false');
+        gecmisToggleBtn.innerHTML = acik
+            ? '<i class="fas fa-calendar-minus me-1"></i>Geçmiş Tarihli Girişi Kapat'
+            : '<i class="fas fa-calendar-plus me-1"></i>Geçmiş Tarihli Giriş';
+
+        if (gecmisTarihInput) {
+            gecmisTarihInput.required = acik;
+        }
+        if (gecmisSaatInput) {
+            gecmisSaatInput.required = acik;
+        }
+    }
+
+    if (gecmisToggleBtn) {
+        gecmisToggleBtn.addEventListener('click', function () {
+            const acikMi = gecmisModInput && gecmisModInput.value === '1';
+            gecmisAlaniDurumunuAyarla(!acikMi);
+        });
+        gecmisAlaniDurumunuAyarla(gecmisModInput && gecmisModInput.value === '1');
+    }
     document.getElementById('alan_plaka')?.addEventListener('input', function () {
         this.value = this.value.toUpperCase();
     });
@@ -703,3 +888,4 @@ $filtre_aktif = ($f_baslangic || $f_bitis || $f_arama);
 <?php echo yazmaYetkisiKontrolJS($baglanti); ?>
 </body>
 </html>
+

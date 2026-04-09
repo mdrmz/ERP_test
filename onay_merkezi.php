@@ -13,6 +13,25 @@ if (!onayYetkisiVar($baglanti)) {
 $mesaj = "";
 $hata = "";
 
+if (!function_exists('normalizeBirimFiyatInput')) {
+    function normalizeBirimFiyatInput($hamDeger)
+    {
+        $hamDeger = trim((string) $hamDeger);
+        $hamDeger = str_replace(' ', '', $hamDeger);
+        return str_replace(',', '.', $hamDeger);
+    }
+}
+
+if (!function_exists('formatBirimFiyatInputValue')) {
+    function formatBirimFiyatInputValue($deger)
+    {
+        if ($deger === null || $deger === '') {
+            return '';
+        }
+        return number_format((float) $deger, 2, '.', '');
+    }
+}
+
 // Onay verme işlemi (mevcut sistem)
 if (isset($_POST['onay_ver'])) {
     $onay_id = $_POST['onay_id'];
@@ -42,7 +61,8 @@ if (isset($_POST['hammadde_onay'])) {
     $akis_id = (int) $_POST['akis_id'];
     $karar = $_POST['karar'];
     $red_aciklama = trim($_POST['red_aciklama'] ?? '');
-    $birim_fiyat_raw = trim($_POST['birim_fiyat'] ?? '');
+    $birim_fiyat_input = trim($_POST['birim_fiyat'] ?? '');
+    $birim_fiyat_raw = normalizeBirimFiyatInput($birim_fiyat_input);
     $odeme_tarihi_raw = trim($_POST['odeme_tarihi'] ?? '');
 
     // Tablo var mı kontrol et
@@ -56,7 +76,7 @@ if (isset($_POST['hammadde_onay'])) {
         } elseif (!is_numeric($birim_fiyat_raw)) {
             $hata = "Birim fiyat geçerli bir sayı olmalıdır!";
         } else {
-            $birim_fiyat = (float) $birim_fiyat_raw;
+            $birim_fiyat = round((float) $birim_fiyat_raw, 2);
             $odeme_tarihi = $baglanti->real_escape_string($odeme_tarihi_raw);
 
         if ($karar === 'onayla') {
@@ -144,7 +164,8 @@ if (isset($_POST['red_nedeni_duzenle'])) {
 // Kantar + Birim Fiyat/Ödeme Tarihi düzenle
 if (isset($_POST['kantar_duzenle'])) {
     $akis_id = (int) $_POST['akis_id'];
-    $birim_fiyat_raw = trim($_POST['birim_fiyat'] ?? '');
+    $birim_fiyat_input = trim($_POST['birim_fiyat'] ?? '');
+    $birim_fiyat_raw = normalizeBirimFiyatInput($birim_fiyat_input);
     $odeme_tarihi_raw = trim($_POST['odeme_tarihi'] ?? '');
 
     if ($birim_fiyat_raw === '' || $odeme_tarihi_raw === '') {
@@ -152,7 +173,7 @@ if (isset($_POST['kantar_duzenle'])) {
     } elseif (!is_numeric($birim_fiyat_raw)) {
         $hata = "Birim fiyat geçerli bir sayı olmalıdır!";
     } else {
-        $birim_fiyat = (float) $birim_fiyat_raw;
+        $birim_fiyat = round((float) $birim_fiyat_raw, 2);
         $odeme_tarihi = mysqli_real_escape_string($baglanti, $odeme_tarihi_raw);
 
         $baglanti->query("UPDATE hammadde_kabul_akisi SET
@@ -683,8 +704,8 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'genel';
                                                 <label class="form-label small mb-1 text-muted">Birim Fiyat *</label>
                                                 <div class="input-group input-group-sm">
                                                     <span class="input-group-text"><i class="fas fa-tag"></i></span>
-                                                    <input form="onayForm<?php echo $row['id']; ?>" type="number" step="0.0001" min="0"
-                                                        name="birim_fiyat" class="form-control" placeholder="0,0000" required>
+                                                    <input form="onayForm<?php echo $row['id']; ?>" type="number" step="0.01" min="0"
+                                                        name="birim_fiyat" class="form-control" placeholder="0,00" required>
                                                 </div>
                                             </div>
                                             <div class="col-12 col-md-5">
@@ -743,8 +764,8 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'genel';
                                                                 <label class="form-label small mb-1">Birim Fiyat *</label>
                                                                 <div class="input-group input-group-sm">
                                                                     <span class="input-group-text"><i class="fas fa-tag"></i></span>
-                                                                    <input type="number" step="0.0001" min="0" name="birim_fiyat"
-                                                                        class="form-control" placeholder="0,0000" required>
+                                                                    <input type="number" step="0.01" min="0" name="birim_fiyat"
+                                                                        class="form-control" placeholder="0,00" required>
                                                                 </div>
                                                             </div>
                                                             <div class="col-6">
@@ -922,7 +943,7 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'genel';
                                                 <button type="button" class="btn btn-sm btn-outline-primary"
                                                     onclick="kantarDuzenleModal(
                                                         <?php echo (int) $row['id']; ?>,
-                                                        '<?php echo htmlspecialchars((string) ($row['birim_fiyat'] ?? ''), ENT_QUOTES); ?>',
+                                                        '<?php echo htmlspecialchars(formatBirimFiyatInputValue($row['birim_fiyat'] ?? null), ENT_QUOTES); ?>',
                                                         '<?php echo htmlspecialchars((string) ($row['odeme_tarihi'] ?? ''), ENT_QUOTES); ?>'
                                                     )">
                                                     <i class="fas fa-edit"></i> Düzenle
@@ -987,7 +1008,7 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'genel';
 
                         <div class="mb-3">
                             <label class="form-label">Birim Fiyat *</label>
-                            <input type="number" step="0.0001" min="0" name="birim_fiyat" id="editBirimFiyat"
+                            <input type="number" step="0.01" min="0" name="birim_fiyat" id="editBirimFiyat"
                                 class="form-control" required>
                         </div>
                         <div class="mb-3">

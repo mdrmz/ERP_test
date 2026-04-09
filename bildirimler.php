@@ -588,7 +588,7 @@ $kullanicilar = $baglanti->query("SELECT id, kadi, tam_ad FROM users WHERE aktif
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Bildirim Başlığı *</label>
                             <input type="text" name="baslik" class="form-control"
-                                placeholder="Örn: Acil - Lab Analizi Gerekiyor" required>
+                                placeholder="Örn: Acil - Hammadde Analizi Gerekiyor" required>
                         </div>
 
                         <div class="mb-3">

@@ -115,7 +115,7 @@ if (isset($_POST["analiz_kaydet"])) {
             systemLogKaydet(
                 $baglanti,
                 'INSERT',
-                'Lab Analizleri',
+                'Hammadde Analiz',
                 "Yeni analiz kaydi: Parti No: $parti_no | Protein: $protein_msg% | Gluten: $gluten_msg%"
             );
 
@@ -123,7 +123,7 @@ if (isset($_POST["analiz_kaydet"])) {
             bildirimOlustur(
                 $baglanti,
                 'analiz_tamamlandi',
-                "Lab Analizi Tamamlandi: $parti_no",
+                "Hammadde Analizi Tamamlandi: $parti_no",
                 "Protein: $protein_msg% | Gluten: $gluten_msg% | Laborant: $laborant",
                 1, // Patron rol_id
                 null,
@@ -194,7 +194,7 @@ if (isset($_POST["analiz_guncelle"])) {
         systemLogKaydet(
             $baglanti,
             'UPDATE',
-            'Lab Analizleri',
+            'Hammadde Analiz',
             "Analiz guncellendi: ID: $id | Parti No: $parti_no | Not: $guncelleme_notu"
         );
 
@@ -247,7 +247,8 @@ $hammadde_girisleri = $baglanti->query("SELECT hg.id, hg.parti_no, hg.arac_plaka
                                         LEFT JOIN hammaddeler h ON hg.hammadde_id = h.id
                                         LEFT JOIN lab_analizleri la ON hg.id = la.hammadde_giris_id
                                         WHERE la.id IS NULL AND hg.analiz_yapildi = 0
-                                        ORDER BY hg.tarih DESC LIMIT 50");
+                                          AND (hg.islem_turu IS NULL OR hg.islem_turu <> 'yukleme')
+                                        ORDER BY hg.tarih DESC");
 
 $tum_hammaddeler = $baglanti->query("SELECT id, ad FROM hammaddeler ORDER BY ad ASC");
 $hammaddeler_arr = [];
@@ -264,7 +265,7 @@ if ($tum_hammaddeler) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab Analizleri - Ozbal Un</title>
+    <title>Hammadde Analiz - Ozbal Un</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
@@ -299,6 +300,19 @@ if ($tum_hammaddeler) {
         .table thead th {
             font-size: 0.85rem;
             white-space: nowrap;
+        }
+
+        #analizlerTablo th.source-col,
+        #analizlerTablo td.source-col {
+            min-width: 240px;
+            width: 240px;
+            white-space: normal;
+        }
+
+        #analizlerTablo th.metric-col,
+        #analizlerTablo td.metric-col {
+            white-space: nowrap;
+            text-align: center;
         }
 
         .action-btns {
@@ -446,7 +460,7 @@ if ($tum_hammaddeler) {
     <div class="container-fluid py-4">
         <div class="d-flex justify-content-between align-items-center mb-4 page-header-flex">
             <div>
-                <h2 class="fw-bold"><i class="fas fa-flask text-info"></i> Laboratuvar Analizleri</h2>
+                <h2 class="fw-bold"><i class="fas fa-flask text-info"></i> Hammadde Analiz</h2>
                 <p class="text-muted mb-0">Hammadde ve ürün kalite kontrol sonuçları</p>
             </div>
             <button class="btn btn-info text-white" data-bs-toggle="modal" data-bs-target="#yeniAnalizModal">
@@ -513,18 +527,18 @@ if ($tum_hammaddeler) {
                         <tr>
                             <th>Tarih</th>
                             <th>Parti No</th>
-                            <th>Kaynak</th>
-                            <th>Protein</th>
-                            <th>Gluten</th>
-                            <th>İndex</th>
-                            <th>Sedim</th>
-                            <th>G.Sedim</th>
-                            <th>HL</th>
-                            <th>Nem</th>
-                            <th>FN</th>
-                            <th>Sertlik</th>
-                            <th>Nişasta</th>
-                            <th>Döker</th>
+                            <th class="source-col">Kaynak</th>
+                            <th class="metric-col">Protein</th>
+                            <th class="metric-col">Gluten</th>
+                            <th class="metric-col">İndex</th>
+                            <th class="metric-col">Sedim</th>
+                            <th class="metric-col">G.Sedim</th>
+                            <th class="metric-col">HL</th>
+                            <th class="metric-col">Nem</th>
+                            <th class="metric-col">FN</th>
+                            <th class="metric-col">Sertlik</th>
+                            <th class="metric-col">Nişasta</th>
+                            <th class="metric-col">Döker</th>
                             <th>Laborant</th>
                             <th class="text-center">İşlem</th>
                         </tr>
@@ -547,6 +561,7 @@ if ($tum_hammaddeler) {
 
                                 $kaynak = $row["arac_plaka"] ? $row["arac_plaka"] . " (" . htmlspecialchars($row["tedarikci"] ?? '') . ")" : "Üretim Numunesi";
                                 $hammadde_info = $row["hammadde_adi"] ? "<div class='small text-muted'>" . htmlspecialchars($row["hammadde_adi"]) . "</div>" : "";
+                                $edit_hg_text = $row["arac_plaka"] ? ($row["arac_plaka"] . " / " . ($row["tedarikci"] ?? '')) : "";
                                 ?>
                                 <tr>
                                     <td data-order="<?php echo $row["tarih"]; ?>">
@@ -555,31 +570,31 @@ if ($tum_hammaddeler) {
                                     <td><span
                                             class="badge bg-secondary"><?php echo htmlspecialchars($row["parti_no"]); ?></span>
                                     </td>
-                                    <td>
+                                    <td class="source-col">
                                         <small><?php echo $kaynak; ?></small>
                                         <?php echo $hammadde_info; ?>
                                     </td>
-                                    <td class="fw-bold <?php echo $protein_cls; ?>">
+                                    <td class="fw-bold metric-col <?php echo $protein_cls; ?>">
                                         %<?php echo number_format($row["protein"], 2); ?></td>
-                                    <td class="fw-bold <?php echo $gluten_cls; ?>">
+                                    <td class="fw-bold metric-col <?php echo $gluten_cls; ?>">
                                         %<?php echo number_format($row["gluten"], 2); ?></td>
-                                    <td class="fw-bold <?php echo $index_cls; ?>"><?php echo $row["index_degeri"]; ?></td>
-                                    <td class="fw-bold <?php echo $sedim_cls; ?>"><?php echo $row["sedimantasyon"]; ?></td>
-                                    <td class="fw-bold <?php echo $gsedim_cls; ?>">
+                                    <td class="fw-bold metric-col <?php echo $index_cls; ?>"><?php echo $row["index_degeri"]; ?></td>
+                                    <td class="fw-bold metric-col <?php echo $sedim_cls; ?>"><?php echo $row["sedimantasyon"]; ?></td>
+                                    <td class="fw-bold metric-col <?php echo $gsedim_cls; ?>">
                                         <?php echo $row["gecikmeli_sedimantasyon"]; ?>
                                     </td>
-                                    <td class="fw-bold <?php echo $hl_cls; ?>">
+                                    <td class="fw-bold metric-col <?php echo $hl_cls; ?>">
                                         <?php echo number_format($row["hektolitre"], 2); ?>
                                     </td>
-                                    <td class="fw-bold <?php echo $nem_cls; ?>">%<?php echo number_format($row["nem"], 2); ?>
+                                    <td class="fw-bold metric-col <?php echo $nem_cls; ?>">%<?php echo number_format($row["nem"], 2); ?>
                                     </td>
-                                    <td class="fw-bold <?php echo $fn_cls; ?>"><?php echo $row["fn"]; ?></td>
-                                    <td class="fw-bold <?php echo $sertlik_cls; ?>">
+                                    <td class="fw-bold metric-col <?php echo $fn_cls; ?>"><?php echo $row["fn"]; ?></td>
+                                    <td class="fw-bold metric-col <?php echo $sertlik_cls; ?>">
                                         <?php echo number_format($row["sertlik"], 2); ?>
                                     </td>
-                                    <td class="fw-bold <?php echo $nisasta_cls; ?>">
+                                    <td class="fw-bold metric-col <?php echo $nisasta_cls; ?>">
                                         %<?php echo number_format($row["nisasta"], 2); ?></td>
-                                    <td class="fw-bold <?php echo $doker_cls; ?>">
+                                    <td class="fw-bold metric-col <?php echo $doker_cls; ?>">
                                         %<?php echo number_format($row["doker_orani"], 2); ?></td>
                                     <td><small><?php echo htmlspecialchars($row["laborant"]); ?></small></td>
                                     <td class="text-center action-btns">
@@ -587,6 +602,7 @@ if ($tum_hammaddeler) {
                                             data-bs-target="#duzenleModal" data-id="<?php echo $row['id']; ?>"
                                             data-parti="<?php echo htmlspecialchars($row['parti_no']); ?>"
                                             data-hgid="<?php echo $row['hammadde_giris_id'] ?? ''; ?>"
+                                            data-hgtext="<?php echo htmlspecialchars($edit_hg_text, ENT_QUOTES); ?>"
                                             data-protein="<?php echo $row['protein']; ?>"
                                             data-gluten="<?php echo $row['gluten']; ?>"
                                             data-index="<?php echo $row['index_degeri']; ?>"
@@ -1079,6 +1095,10 @@ if ($tum_hammaddeler) {
                 "order": [[0, "desc"]], // Tarihe gore azalan (en yeni ustte)
                 "pageLength": 25,
                 "scrollX": true,
+                "autoWidth": false,
+                "columnDefs": [
+                    { "targets": 2, "width": "240px" }
+                ],
                 "language": {
                     "emptyTable": "Tabloda herhangi bir veri mevcut değil",
                     "info": "_TOTAL_ kayıttan _START_ - _END_ arasındaki kayıtlar gösteriliyor",
@@ -1105,10 +1125,25 @@ if ($tum_hammaddeler) {
             if (duzenleModal) {
                 duzenleModal.addEventListener('show.bs.modal', function (event) {
                     var button = event.relatedTarget;
+                    var hammaddeSelect = document.getElementById('edit_hammadde_giris_id');
+                    var hammaddeGirisId = button.getAttribute('data-hgid') || '';
+                    var hammaddeGirisText = button.getAttribute('data-hgtext') || '';
+
+                    // Listede olmayan mevcut baglantiyi gecici olarak ekleyip secimi koru.
+                    hammaddeSelect.querySelectorAll('option[data-temp="1"]').forEach(function (opt) {
+                        opt.remove();
+                    });
+                    if (hammaddeGirisId && !hammaddeSelect.querySelector('option[value="' + hammaddeGirisId + '"]')) {
+                        var tempOption = document.createElement('option');
+                        tempOption.value = hammaddeGirisId;
+                        tempOption.textContent = hammaddeGirisText || ('Hammadde Giris #' + hammaddeGirisId);
+                        tempOption.setAttribute('data-temp', '1');
+                        hammaddeSelect.appendChild(tempOption);
+                    }
 
                     document.getElementById('edit_analiz_id').value = button.getAttribute('data-id');
                     document.getElementById('edit_parti_no').value = button.getAttribute('data-parti');
-                    document.getElementById('edit_hammadde_giris_id').value = button.getAttribute('data-hgid') || '';
+                    hammaddeSelect.value = hammaddeGirisId;
                     document.getElementById('edit_protein').value = button.getAttribute('data-protein');
                     document.getElementById('edit_gluten').value = button.getAttribute('data-gluten');
                     document.getElementById('edit_index_degeri').value = button.getAttribute('data-index');

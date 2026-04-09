@@ -56,15 +56,28 @@ if (!function_exists('navbarModulGoster')) {
 }
 
 $can_siparis = navbarModulGoster($baglanti, 'Satış & Siparişler');
+$can_satin_alma = navbarModulGoster($baglanti, 'Satın Alma');
 $can_onay = $is_patron || (function_exists('onayYetkisiVar') ? onayYetkisiVar($baglanti) : false);
 
 $siparis_bekleyen_sayisi = 0;
+$satin_alma_bekleyen_sayisi = 0;
 $onay_bekleyen_sayisi = 0;
 
 if ($can_siparis) {
     $siparis_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM siparisler WHERE durum = 'Bekliyor'");
     if ($siparis_result && $siparis_row = $siparis_result->fetch_assoc()) {
         $siparis_bekleyen_sayisi = (int) ($siparis_row['cnt'] ?? 0);
+    }
+}
+
+if ($can_satin_alma) {
+    if (function_exists('satinAlmaBekleyenHammaddeSayisi')) {
+        $satin_alma_bekleyen_sayisi = satinAlmaBekleyenHammaddeSayisi($baglanti);
+    } else {
+        $satin_alma_result = @$baglanti->query("SELECT COUNT(*) AS cnt FROM hammadde_kabul_akisi WHERE asama = 'satina_bekliyor'");
+        if ($satin_alma_result && $satin_alma_row = $satin_alma_result->fetch_assoc()) {
+            $satin_alma_bekleyen_sayisi = (int) ($satin_alma_row['cnt'] ?? 0);
+        }
     }
 }
 
@@ -763,19 +776,25 @@ if ($can_onay) {
             </a>
         </div>
 
-        <?php if (navbarModulGoster($baglanti, 'Hammadde Yönetimi') || navbarModulGoster($baglanti, 'Satın Alma')) { ?>
+        <?php if (navbarModulGoster($baglanti, 'Hammadde Yönetimi') || $can_satin_alma) { ?>
             <div class="nav-group">
                 <div class="nav-group-title">Hammadde & Kantar</div>
                 <?php if (navbarModulGoster($baglanti, 'Hammadde Yönetimi')) { ?>
                     <a href="hammadde.php" class="nav-link <?php if ($sayfa == 'hammadde.php')
                         echo 'active'; ?>">
-                        <i class="fas fa-truck-loading"></i> Hammadde Kabul
+                        <i class="fas fa-truck-loading"></i> Araç Kabul
                     </a>
                 <?php } ?>
-                <?php if (navbarModulGoster($baglanti, 'Satın Alma')) { ?>
+                <?php if ($can_satin_alma) { ?>
                     <a href="satin_alma.php" class="nav-link <?php if ($sayfa == 'satin_alma.php')
                         echo 'active'; ?>">
-                        <i class="fas fa-weight-scale"></i> Kantar & Muhasebe
+                        <div class="d-flex justify-content-between w-100 align-items-center">
+                            <span><i class="fas fa-weight-scale"></i> Kantar & Muhasebe</span>
+                            <span id="satinAlmaBadgeSidebar" class="badge bg-danger rounded-pill"
+                                style="<?php echo $satin_alma_bekleyen_sayisi > 0 ? '' : 'display: none;'; ?>">
+                                <?php echo $satin_alma_bekleyen_sayisi; ?>
+                            </span>
+                        </div>
                     </a>
                     <a href="kantar_liste.php" class="nav-link <?php if ($sayfa == 'kantar_liste.php')
                         echo 'active'; ?>">
@@ -787,14 +806,14 @@ if ($can_onay) {
 
         <?php if (navbarModulGoster($baglanti, 'Lab Analizleri') || navbarModulGoster($baglanti, 'İzlenebilirlik')) { ?>
             <div class="nav-group">
-                <div class="nav-group-title">Lab & Kalite</div>
+                <div class="nav-group-title">Analiz & Kalite</div>
                 <?php if (navbarModulGoster($baglanti, 'Lab Analizleri')) { ?>
                     <a href="lab_analizleri.php" class="nav-link <?php if ($sayfa == 'lab_analizleri.php')
                         echo 'active'; ?>">
-                        <i class="fas fa-flask"></i> Lab Analiz
+                        <i class="fas fa-flask"></i> Hammadde Analiz
                     </a>
                 <?php } ?>
-                <?php if (navbarModulGoster($baglanti, 'İzlenebilirlik')) { ?>
+                <?php if (false && navbarModulGoster($baglanti, 'İzlenebilirlik')) { ?>
                     <a href="izlenebilirlik.php" class="nav-link <?php if ($sayfa == 'izlenebilirlik.php')
                         echo 'active'; ?>">
                         <i class="fas fa-barcode"></i> İzlenebilirlik
@@ -821,7 +840,7 @@ if ($can_onay) {
             </div>
         <?php } ?>
 
-        <?php if (navbarModulGoster($baglanti, 'Planlama & Takvim') || navbarModulGoster($baglanti, 'Üretim Paneli')) { ?>
+        <?php if (false && (navbarModulGoster($baglanti, 'Planlama & Takvim') || navbarModulGoster($baglanti, 'Üretim Paneli'))) { ?>
             <div class="nav-group">
                 <div class="nav-group-title">Planlama & Üretim</div>
                 <?php if (navbarModulGoster($baglanti, 'Planlama & Takvim')) { ?>
@@ -839,7 +858,7 @@ if ($can_onay) {
             </div>
         <?php } ?>
 
-        <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik') || navbarModulGoster($baglanti, 'Stok Takibi')) { ?>
+        <?php if (false && (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik') || navbarModulGoster($baglanti, 'Stok Takibi'))) { ?>
             <div class="nav-group">
                 <div class="nav-group-title">Depo & Sevkiyat</div>
                 <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
@@ -857,7 +876,7 @@ if ($can_onay) {
             </div>
         <?php } ?>
 
-        <?php if (navbarModulGoster($baglanti, 'Satış & Siparişler') || navbarModulGoster($baglanti, 'Pazarlama') || navbarModulGoster($baglanti, 'Müşteriler')) { ?>
+        <?php if (false && (navbarModulGoster($baglanti, 'Satış & Siparişler') || navbarModulGoster($baglanti, 'Pazarlama') || navbarModulGoster($baglanti, 'Müşteriler'))) { ?>
             <div class="nav-group">
                 <div class="nav-group-title">Satış & Müşteri</div>
                 <?php if (navbarModulGoster($baglanti, 'Müşteriler')) { ?>
@@ -962,13 +981,13 @@ if ($can_onay) {
         echo 'active'; ?>">
         <i class="fas fa-home"></i> Panel
     </a>
-    <?php if (navbarModulGoster($baglanti, 'Üretim Paneli')) { ?>
+    <?php if (false && navbarModulGoster($baglanti, 'Üretim Paneli')) { ?>
         <a href="uretim.php" class="m-link <?php if ($sayfa == 'uretim.php')
             echo 'active'; ?>">
             <i class="fas fa-industry"></i> Üretim
         </a>
     <?php } ?>
-    <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
+    <?php if (false && navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
         <a href="depo_sevkiyat.php" class="m-link <?php if ($sayfa == 'depo_sevkiyat.php')
             echo 'active'; ?>">
             <i class="fas fa-truck"></i> Sevk
@@ -998,50 +1017,54 @@ if ($can_onay) {
         <?php if (navbarModulGoster($baglanti, 'Hammadde Yönetimi')) { ?>
             <a href="hammadde.php" class="menu-item <?php if ($sayfa == 'hammadde.php')
                 echo 'active'; ?>">
-                <i class="fas fa-truck-loading"></i> Hammadde
+                <i class="fas fa-truck-loading"></i> Araç Kabul
             </a>
         <?php } ?>
-        <?php if (navbarModulGoster($baglanti, 'Planlama & Takvim')) { ?>
+        <?php if (false && navbarModulGoster($baglanti, 'Planlama & Takvim')) { ?>
             <a href="planlama.php" class="menu-item <?php if ($sayfa == 'planlama.php')
                 echo 'active'; ?>">
                 <i class="fas fa-calendar-alt"></i> Planlama
             </a>
         <?php } ?>
-        <?php if (navbarModulGoster($baglanti, 'Üretim Paneli')) { ?>
+        <?php if (false && navbarModulGoster($baglanti, 'Üretim Paneli')) { ?>
             <a href="uretim.php" class="menu-item <?php if ($sayfa == 'uretim.php')
                 echo 'active'; ?>">
                 <i class="fas fa-industry"></i> Üretim
             </a>
         <?php } ?>
-        <?php if (navbarModulGoster($baglanti, 'Müşteriler')) { ?>
+        <?php if (false && navbarModulGoster($baglanti, 'Müşteriler')) { ?>
             <a href="sikayetler.php" class="menu-item <?php if ($sayfa == 'sikayetler.php')
                 echo 'active'; ?>">
                 <i class="fas fa-comment-dots"></i> Şikayetler
             </a>
         <?php } ?>
-        <?php if (navbarModulGoster($baglanti, 'Satın Alma')) { ?>
+        <?php if ($can_satin_alma) { ?>
             <a href="satin_alma.php" class="menu-item <?php if ($sayfa == 'satin_alma.php')
-                echo 'active'; ?>">
+                echo 'active'; ?>" style="position: relative;">
                 <i class="fas fa-shopping-cart"></i> Kantar
+                <span id="satinAlmaBadgeMobile" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                    style="font-size: 0.5rem; padding: 0.25em 0.4em; <?php echo $satin_alma_bekleyen_sayisi > 0 ? '' : 'display: none;'; ?>">
+                    <?php echo $satin_alma_bekleyen_sayisi; ?>
+                </span>
             </a>
             <a href="kantar_liste.php" class="menu-item <?php if ($sayfa == 'kantar_liste.php')
                 echo 'active'; ?>">
                 <i class="fas fa-weight-scale"></i> Kantar Geçmişi
             </a>
         <?php } ?>
-        <?php if (navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
+        <?php if (false && navbarModulGoster($baglanti, 'Sevkiyat & Lojistik')) { ?>
             <a href="depo_sevkiyat.php" class="menu-item <?php if ($sayfa == 'depo_sevkiyat.php')
                 echo 'active'; ?>">
                 <i class="fas fa-boxes-stacked"></i> Depo
             </a>
         <?php } ?>
-        <?php if (navbarModulGoster($baglanti, 'Stok Takibi')) { ?>
+        <?php if (false && navbarModulGoster($baglanti, 'Stok Takibi')) { ?>
             <a href="malzeme_stok.php" class="menu-item <?php if ($sayfa == 'malzeme_stok.php')
                 echo 'active'; ?>">
                 <i class="fas fa-cubes"></i> Malzeme Stok
             </a>
         <?php } ?>
-        <?php if (navbarModulGoster($baglanti, 'İzlenebilirlik')) { ?>
+        <?php if (false && navbarModulGoster($baglanti, 'İzlenebilirlik')) { ?>
             <a href="izlenebilirlik.php" class="menu-item <?php if ($sayfa == 'izlenebilirlik.php')
                 echo 'active'; ?>">
                 <i class="fas fa-barcode"></i> İzlenebilirlik
@@ -1050,7 +1073,7 @@ if ($can_onay) {
         <?php if (navbarModulGoster($baglanti, 'Lab Analizleri')) { ?>
             <a href="lab_analizleri.php" class="menu-item <?php if ($sayfa == 'lab_analizleri.php')
                 echo 'active'; ?>">
-                <i class="fas fa-flask"></i> Lab
+                <i class="fas fa-flask"></i> Hammadde Analiz
             </a>
         <?php } ?>
         <?php if (navbarModulGoster($baglanti, 'Silo Yönetimi')) { ?>
@@ -1103,6 +1126,7 @@ if ($can_onay) {
     let bildirimAcik = false;
     let sonBildirimSayisi = <?php echo (int) $bildirim_sayisi; ?>;
     let sonSiparisSayisi = <?php echo $can_siparis ? (int) $siparis_bekleyen_sayisi : 0; ?>;
+    let sonSatinAlmaSayisi = <?php echo $can_satin_alma ? (int) $satin_alma_bekleyen_sayisi : 0; ?>;
     let sonOnaySayisi = <?php echo $can_onay ? (int) $onay_bekleyen_sayisi : 0; ?>;
 
     function toggleBildirimDropdown() {
@@ -1198,6 +1222,12 @@ if ($can_onay) {
         });
     }
 
+    function satinAlmaBadgeGuncelle(adet, aktif) {
+        ['satinAlmaBadgeSidebar', 'satinAlmaBadgeMobile'].forEach(function (id) {
+            badgeGuncelle(id, adet, aktif);
+        });
+    }
+
     // Her 30 saniyede tüm sayaçları kontrol et
     function bildirimKontrol() {
         fetch('ajax/bildirimler_api.php?action=all_counts')
@@ -1205,12 +1235,15 @@ if ($can_onay) {
             .then(data => {
                 const bildirimCount = Number(data.bildirim_count ?? data.count ?? 0);
                 const siparisCount = Number(data.siparis_count ?? 0);
+                const satinAlmaCount = Number(data.satin_alma_count ?? 0);
                 const onayCount = Number(data.onay_count ?? 0);
                 const canSiparisNow = Boolean(data.can_siparis);
+                const canSatinAlmaNow = Boolean(data.can_satin_alma);
                 const canOnayNow = Boolean(data.can_onay);
 
                 badgeGuncelle('bildirimBadge', bildirimCount, true);
                 badgeGuncelle('siparisBadge', siparisCount, canSiparisNow);
+                satinAlmaBadgeGuncelle(satinAlmaCount, canSatinAlmaNow);
                 onayBadgeGuncelle(onayCount, canOnayNow);
 
                 if (bildirimCount > sonBildirimSayisi) {
@@ -1219,12 +1252,16 @@ if ($can_onay) {
                 if (canSiparisNow && siparisCount > sonSiparisSayisi) {
                     yeniBildirimPopup(`${siparisCount - sonSiparisSayisi} yeni bekleyen sipariş var!`, 'fa-shopping-bag');
                 }
+                if (canSatinAlmaNow && satinAlmaCount > sonSatinAlmaSayisi) {
+                    yeniBildirimPopup(`${satinAlmaCount - sonSatinAlmaSayisi} yeni satın alma bekleyen hammadde var!`, 'fa-weight-scale');
+                }
                 if (canOnayNow && onayCount > sonOnaySayisi) {
                     yeniBildirimPopup(`${onayCount - sonOnaySayisi} yeni onay bekleyen işlem var!`, 'fa-check-double');
                 }
 
                 sonBildirimSayisi = bildirimCount;
                 sonSiparisSayisi = canSiparisNow ? siparisCount : 0;
+                sonSatinAlmaSayisi = canSatinAlmaNow ? satinAlmaCount : 0;
                 sonOnaySayisi = canOnayNow ? onayCount : 0;
             })
             .catch(() => { });

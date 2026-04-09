@@ -905,35 +905,41 @@ $son_un1_kayitlari = $baglanti->query("
             </div>
         </div>
 
-        <!-- SEKMELER -->
+        <?php $activeTab = $_GET['tab'] ?? 'tavlama'; ?>
         <ul class="nav nav-tabs" id="uretimTabs" role="tablist">
             <li class="nav-item">
-                <button class="nav-link active" id="tavlama-tab" data-bs-toggle="tab" data-bs-target="#tavlama" type="button"
+                <button class="nav-link <?php echo $activeTab == 'tavlama' ? 'active' : ''; ?>" id="tavlama-tab" data-bs-toggle="tab" data-bs-target="#tavlama" type="button"
                     role="tab">
                     <i class="fas fa-water me-1"></i> Tavlama 1
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="tavlama2-tab" data-bs-toggle="tab" data-bs-target="#tavlama2" type="button"
+                <button class="nav-link <?php echo $activeTab == 'tavlama2' ? 'active' : ''; ?>" id="tavlama2-tab" data-bs-toggle="tab" data-bs-target="#tavlama2" type="button"
                     role="tab">
                     <i class="fas fa-tint me-1"></i> Tavlama 2
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="tavlama3-tab" data-bs-toggle="tab" data-bs-target="#tavlama3" type="button"
+                <button class="nav-link <?php echo $activeTab == 'tavlama3' ? 'active' : ''; ?>" id="tavlama3-tab" data-bs-toggle="tab" data-bs-target="#tavlama3" type="button"
                     role="tab">
                     <i class="fas fa-tint me-1"></i> Tavlama 3
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="b1-tab" data-bs-toggle="tab" data-bs-target="#b1" type="button" role="tab">
+                <button class="nav-link <?php echo $activeTab == 'b1' ? 'active' : ''; ?>" id="b1-tab" data-bs-toggle="tab" data-bs-target="#b1" type="button" role="tab">
                     <i class="fas fa-industry me-1"></i> B1 (Üretime Giriş)
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="un1-tab" data-bs-toggle="tab" data-bs-target="#un1" type="button"
+                <button class="nav-link <?php echo $activeTab == 'un1' ? 'active' : ''; ?>" id="un1-tab" data-bs-toggle="tab" data-bs-target="#un1" type="button"
                     role="tab">
                     <i class="fas fa-flask me-1"></i> Un 1
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link <?php echo $activeTab == 'canli_rota' ? 'active' : ''; ?>" id="canli_rota-tab" data-bs-toggle="tab" data-bs-target="#canli_rota" type="button"
+                    role="tab">
+                    <i class="fas fa-route me-1"></i> Canlı Rota
                 </button>
             </li>
         </ul>
@@ -941,7 +947,7 @@ $son_un1_kayitlari = $baglanti->query("
         <div class="tab-content" id="uretimTabsContent">
 
             <!-- ================== SEKME 2: TAVLAMA 1 ================== -->
-            <div class="tab-pane fade show active p-3" id="tavlama" role="tabpanel">
+            <div class="tab-pane fade <?php echo $activeTab == 'tavlama' ? 'show active' : ''; ?> p-3" id="tavlama" role="tabpanel">
                 <form action="uretim.php" method="POST" id="tavlama1Form">
                     <!-- TAVLAMA 1 HEADER -->
                     <div class="pacal-header mb-4">
@@ -2108,6 +2114,11 @@ $son_un1_kayitlari = $baglanti->query("
 
             </div>
 
+            <!-- ================== SEKME 7: CANLI ROTA ================== -->
+            <div class="tab-pane fade <?php echo $activeTab == 'canli_rota' ? 'show active' : ''; ?> p-3" id="canli_rota" role="tabpanel">
+                <?php include("includes/planlama_canli_rota_tab.php"); ?>
+            </div>
+
         </div>
     </div>
 
@@ -2824,6 +2835,18 @@ $son_un1_kayitlari = $baglanti->query("
                 .catch(err => console.error("B1 veri çekme hatası:", err));
         }
 
+        // PLC Otomatik Stok Düşüm / Canlı Rota İşleyici
+        if (window.location.href.indexOf('canli_rota') !== -1) {
+            setInterval(() => {
+                const activeTab = document.querySelector('.nav-link.active');
+                if(activeTab && activeTab.id === 'canli_rota-tab') {
+                    window.location.reload();
+                }
+            }, 30000); 
+        }
+
+        // Arka planda transfer veritabanını işlemesi için her 10s'de endpoint tetikle
+        setInterval(() => fetch('ajax/plc_stok_guncelleme.php?gizli_key=1').catch(()=>{}), 10000);
     </script>
 </body>
 
