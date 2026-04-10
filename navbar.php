@@ -830,6 +830,10 @@ if ($can_onay) {
                         echo 'active'; ?>">
                         <i class="fas fa-database"></i> Silo Yönetimi
                     </a>
+                    <a href="silo_aktarma.php" class="nav-link <?php if ($sayfa == 'silo_aktarma.php')
+                        echo 'active'; ?>">
+                        <i class="fas fa-exchange-alt"></i> Hammadde Silo Aktarma
+                    </a>
                 <?php } ?>
                 <?php if (navbarModulGoster($baglanti, 'Hammadde Kodlama')) { ?>
                     <a href="hammadde_kodlama.php" class="nav-link <?php if ($sayfa == 'hammadde_kodlama.php')
@@ -1080,6 +1084,10 @@ if ($can_onay) {
             <a href="silo_yonetimi.php" class="menu-item <?php if ($sayfa == 'silo_yonetimi.php')
                 echo 'active'; ?>">
                 <i class="fas fa-database"></i> Silo
+            </a>
+            <a href="silo_aktarma.php" class="menu-item <?php if ($sayfa == 'silo_aktarma.php')
+                echo 'active'; ?>">
+                <i class="fas fa-exchange-alt"></i> Aktarma
             </a>
         <?php } ?>
         <?php if (navbarModulGoster($baglanti, 'Hammadde Kodlama')) { ?>

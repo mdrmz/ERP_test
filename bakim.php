@@ -20,7 +20,7 @@ bakimBildirimleriniKontrolEt($baglanti);
 $mesaj = "";
 $hata = "";
 $aktif_tab = "makine";
-$izinli_tablar = ["makine", "gecmis", "dosyalar"];
+$izinli_tablar = ["makine", "gecmis", "malzeme", "dosyalar"];
 if (isset($_GET["tab"]) && in_array($_GET["tab"], $izinli_tablar, true)) {
     $aktif_tab = $_GET["tab"];
 }
@@ -481,6 +481,60 @@ if (isset($_GET["pdf_sil"])) {
     }
 }
 
+
+// --- 11. YENİ MALZEME STOK EKLEME ---
+if (isset($_POST["malzeme_stok_ekle"])) {
+    $ismi = trim($_POST["malzeme_ismi"]);
+    $alet = trim($_POST["malzeme_alet"]);
+    $gelis = $_POST["malzeme_gelis"];
+    $kullanim = trim($_POST["malzeme_kullanim"]);
+
+    $stmt = $baglanti->prepare("INSERT INTO bakim_malzeme_stok (ismi, alet, gelis_tarihi, kullanim_miktari) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("ssss", $ismi, $alet, $gelis, $kullanim);
+    
+    if ($stmt->execute()) {
+        $mesaj = "✅ Yeni malzeme başarıyla eklendi.";
+        systemLogKaydet($baglanti, "INSERT", "Bakım & Arıza", "Yeni malzeme eklendi: $ismi");
+    } else {
+        $hata = "Hata: " . $baglanti->error;
+    }
+}
+
+// --- 12. MALZEME STOK GÜNCELLEME ---
+if (isset($_POST["malzeme_stok_guncelle"])) {
+    $id = (int) $_POST["malzeme_id"];
+    $ismi = trim($_POST["malzeme_ismi"]);
+    $alet = trim($_POST["malzeme_alet"]);
+    $gelis = $_POST["malzeme_gelis"];
+    $kullanim = trim($_POST["malzeme_kullanim"]);
+
+    $stmt = $baglanti->prepare("UPDATE bakim_malzeme_stok SET ismi=?, alet=?, gelis_tarihi=?, kullanim_miktari=? WHERE id=?");
+    $stmt->bind_param("ssssi", $ismi, $alet, $gelis, $kullanim, $id);
+    
+    if ($stmt->execute()) {
+        $mesaj = "✅ Malzeme bilgileri güncellendi.";
+        systemLogKaydet($baglanti, "UPDATE", "Bakım & Arıza", "Malzeme güncellendi (ID: $id)");
+    } else {
+        $hata = "Hata: " . $baglanti->error;
+    }
+}
+
+// --- 13. MALZEME STOK SİLME ---
+if (isset($_GET["malzeme_sil"])) {
+    $id = (int) $_GET["malzeme_sil"];
+    $stmt = $baglanti->prepare("DELETE FROM bakim_malzeme_stok WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    if ($stmt->execute()) {
+        $mesaj = "✅ Malzeme silindi.";
+        systemLogKaydet($baglanti, "DELETE", "Bakım & Arıza", "Malzeme silindi (ID: $id)");
+    } else {
+        $hata = "Silme Hatası: " . $baglanti->error;
+    }
+    header("Location: bakim.php?tab=malzeme");
+    exit;
+}
+
+
 $stats = [
     'gecikmis' => $baglanti->query("SELECT COUNT(*) as sayi FROM makineler WHERE aktif = 1 AND sonraki_bakim_tarihi < CURRENT_DATE")->fetch_assoc()['sayi'],
     'yaklasan' => $baglanti->query("SELECT COUNT(*) as sayi FROM makineler WHERE aktif = 1 AND sonraki_bakim_tarihi BETWEEN CURRENT_DATE AND DATE_ADD(CURRENT_DATE, INTERVAL 7 DAY)")->fetch_assoc()['sayi'],
@@ -489,6 +543,7 @@ $stats = [
 
 // LİSTELERİ ÇEK
 $makineler = $baglanti->query("SELECT * FROM makineler WHERE aktif = 1 ORDER BY sonraki_bakim_tarihi ASC");
+$malzeme_stoklar = $baglanti->query("SELECT * FROM bakim_malzeme_stok ORDER BY gelis_tarihi DESC");
 $gecmis = $baglanti->query("SELECT b.*, m.makine_adi, m.makine_kodu FROM bakim_kayitlari b JOIN makineler m ON b.makine_id = m.id ORDER BY b.bakim_tarihi DESC LIMIT 20");
 $lab_malzemeler = $baglanti->query("SELECT * FROM bakim_lab_malzemeler ORDER BY malzeme_adi ASC");
 $bakim_dokumanlari = false;
@@ -513,295 +568,378 @@ if ($pdf_yukleme_aktif) {
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css"
         rel="stylesheet" />
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f8f9fa;
+        :root {
+            --maint-bg: #f2f5fb;
+            --maint-surface: #ffffff;
+            --maint-border: #dbe4f0;
+            --maint-text: #122033;
+            --maint-muted: #5f6f84;
+            --maint-accent: #0284c7;
+            --maint-accent-strong: #0369a1;
+            --maint-dark: #1e293b;
+            --maint-danger: #dc2626;
+            --maint-warning: #d97706;
+            --maint-success: #16a34a;
         }
 
-        .card {
+        body.bg-light {
+            font-family: 'Inter', sans-serif;
+            background: 
+                radial-gradient(1200px 420px at 100% -40%, rgba(2, 132, 199, 0.12), rgba(2, 132, 199, 0)),
+                linear-gradient(180deg, #f7f9fd 0%, var(--maint-bg) 100%) !important;
+            color: var(--maint-text);
+            min-height: 100vh;
+        }
+
+        .page-hero {
+            background: linear-gradient(128deg, #0f172a 0%, #1e293b 62%, #0284c7 145%);
+            color: #fff;
+            border-radius: 1.25rem;
+            padding: 1.5rem 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 16px 26px -18px rgba(15, 23, 42, 0.9);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+
+        .page-hero::before {
+            content: "";
+            position: absolute;
+            width: 380px;
+            height: 380px;
+            top: -70%;
+            right: -5%;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0));
+            pointer-events: none;
+        }
+
+        .hero-title {
+            margin: 0;
+            font-size: 2.2rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
+
+        .hero-subtitle {
+            margin: 0.35rem 0 0;
+            color: rgba(255, 255, 255, 0.84);
+            font-size: 1.05rem;
+        }
+
+        .hero-stats-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            z-index: 1;
+        }
+        
+        .hero-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.75rem;
+        }
+
+        .hero-stat-card {
+            background: rgba(255, 255, 255, 0.11);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 0.85rem;
+            padding: 0.75rem 1rem;
+            backdrop-filter: blur(8px);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            min-width: 120px;
+            text-align: center;
+        }
+
+        .hero-stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px -18px rgba(2, 6, 23, 0.95);
+        }
+
+        .hero-stat-card .label {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .hero-stat-card .value {
+            font-size: 1.7rem;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1;
+        }
+
+        .hero-stat-card.danger-stat {
+            background: rgba(220, 38, 38, 0.2);
+            border-color: rgba(220, 38, 38, 0.4);
+        }
+        
+        .hero-stat-card.warning-stat {
+            background: rgba(217, 119, 6, 0.2);
+            border-color: rgba(217, 119, 6, 0.4);
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .btn-surface {
+            border-radius: 0.75rem;
+            font-weight: 600;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Nav Pills Modernization */
+        .nav-pills {
+            background: var(--maint-surface);
+            padding: 0.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px -8px rgba(0,0,0,0.1);
+            display: inline-flex;
+            gap: 0.25rem;
+            border: 1px solid var(--maint-border);
+        }
+
+        .nav-pills .nav-link {
+            border-radius: 0.75rem;
+            padding: 0.75rem 1.25rem;
+            font-weight: 600;
+            color: var(--maint-muted);
             border: none;
-            border-radius: 12px;
+            background: transparent;
+            margin: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .nav-pills .nav-link.active {
+            background: var(--maint-accent);
+            color: #fff;
+            box-shadow: 0 4px 12px -4px rgba(2, 132, 199, 0.4);
+        }
+
+        .nav-pills .nav-link:hover:not(.active) {
+            background: rgba(2, 132, 199, 0.08);
+            color: var(--maint-accent-strong);
+        }
+
+        /* Surface Cards */
+        .surface-card {
+            background: var(--maint-surface);
+            border: 1px solid var(--maint-border) !important;
+            border-radius: 1.25rem;
+            box-shadow: 0 8px 24px -12px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
             transition: all 0.3s ease;
         }
 
-        .card-stats {
-            border-left: 5px solid;
+        .surface-header {
+            background: transparent;
+            border-bottom: 1px solid var(--maint-border);
+            padding: 1.25rem 1.5rem;
         }
 
-        .card-stats .icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
+        /* Makine Karti Modernizasyonu */
+        .makine-card {
+            background: var(--maint-surface);
+            border: 1px solid var(--maint-border);
+            border-radius: 1.25rem;
+            position: relative;
+            overflow: hidden;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
+            flex-direction: column;
+            height: 100%;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .bg-past {
-            background-color: #fff1f2;
+        .makine-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px -12px rgba(15, 23, 42, 0.15);
+            border-color: #cbd5e1;
         }
 
-        .bg-soon {
-            background-color: #fffbeb;
+        .mach-status-line {
+            height: 6px;
+            width: 100%;
         }
 
-        .bg-ok {
-            background-color: #f0fdf4;
+        .mach-status-danger { background-color: var(--maint-danger); }
+        .mach-status-warning { background-color: var(--maint-warning); }
+        .mach-status-success { background-color: var(--maint-success); }
+        .mach-status-unknown { background-color: #94a3b8; }
+
+        .makine-card-header {
+            cursor: pointer;
+            padding: 1.25rem;
         }
 
-        .table thead th {
-            background-color: #f8fafc;
-            color: #64748b;
-            font-weight: 600;
-            text-transform: uppercase;
+        .card-actions {
+            opacity: 0;
+            transition: opacity 0.3s;
+            background: #f8fafc;
+            padding: 0.75rem;
+            border-top: 1px solid var(--maint-border);
+            display: flex;
+            justify-content: space-around;
+        }
+
+        .makine-card:hover .card-actions,
+        .makine-card:focus-within .card-actions {
+            opacity: 1;
+        }
+
+        .status-pill {
+            padding: 0.35rem 0.85rem;
+            border-radius: 999px;
             font-size: 0.75rem;
-            letter-spacing: 0.025em;
-            border-top: none;
+            font-weight: 700;
+            letter-spacing: 0.03em;
         }
 
-        .table tbody td {
-            vertical-align: middle;
-            padding: 1rem 0.75rem;
-            color: #1e293b;
+        .status-normal { background-color: #dcfce7; color: #166534; }
+        .status-warning { background-color: #fef9c3; color: #854d0e; }
+        .status-danger { background-color: #fee2e2; color: #991b1b; }
+
+        .filter-btn {
+            border: 1px solid var(--maint-border);
+            background-color: var(--maint-surface);
+            color: var(--maint-muted);
+            border-radius: 999px;
+            padding: 0.5rem 1.25rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        .filter-btn.active,
+        .filter-btn:hover {
+            background-color: var(--maint-accent);
+            color: #fff;
+            border-color: var(--maint-accent);
+            box-shadow: 0 4px 12px -4px rgba(2, 132, 199, 0.3);
+        }
+
+        /* Form Elemants & Search */
         .search-box {
             position: relative;
         }
 
         .search-box i {
             position: absolute;
-            left: 12px;
+            left: 14px;
             top: 50%;
             transform: translateY(-50%);
             color: #94a3b8;
         }
 
         .search-box input {
-            padding-left: 35px;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-        }
-
-        .btn-action {
-            width: 32px;
-            height: 32px;
-            padding: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
-        }
-
-        .status-pill {
-            padding: 4px 12px;
+            padding-left: 40px;
             border-radius: 999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .status-normal {
-            background-color: #dcfce7;
-            color: #166534;
-        }
-
-        .status-warning {
-            background-color: #fef9c3;
-            color: #854d0e;
-        }
-
-        .status-danger {
-            background-color: #fee2e2;
-            color: #991b1b;
-        }
-
-        /* YENİ UI EKLENTİLERİ */
-        .filter-btn {
-            border: 1px solid #e2e8f0;
-            background-color: #fff;
-            color: #475569;
-            border-radius: 999px;
-            padding: 0.4rem 1rem;
-            font-size: 0.85rem;
-            font-weight: 500;
+            border: 1px solid var(--maint-border);
+            background: #f8fafc;
+            padding-top: 0.6rem;
+            padding-bottom: 0.6rem;
             transition: all 0.2s;
         }
 
-        .filter-btn.active,
-        .filter-btn:hover {
-            background-color: #0d6efd;
-            color: #fff;
-            border-color: #0d6efd;
+        .search-box input:focus {
+            background: #fff;
+            box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+            border-color: #cbd5e1;
         }
 
-        .makine-card {
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            background-color: #fff;
-            transition: all 0.2s;
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
+        /* Tables Modernization */
+        .table-hover tbody tr {
+            transition: background-color 0.2s;
         }
-
-        .makine-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-        }
-
-        .mach-status-line {
-            height: 4px;
-            width: 100%;
-        }
-
-        .mach-status-danger {
-            background-color: #ef4444;
-        }
-
-        .mach-status-warning {
-            background-color: #f59e0b;
-        }
-
-        .mach-status-success {
-            background-color: #10b981;
-        }
-
-        .mach-status-unknown {
-            background-color: #94a3b8;
-        }
-
-        .card-actions {
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        /* Dokunmatik cihaz destekli görünüm için focus states dahil eklendi */
-        .makine-card:hover .card-actions,
-        .makine-card:focus-within .card-actions {
-            opacity: 1;
-        }
-
-        .makine-card-header {
-            cursor: pointer;
-        }
-
-        .nav-pills .nav-link {
-            border-radius: 12px;
-            padding: 0.8rem 1.5rem;
-            font-weight: 600;
-            color: #64748b;
-            background-color: #fff;
-            border: 1px solid #e2e8f0;
-            margin-right: 10px;
-            transition: all 0.3s ease;
-        }
-
-        .nav-pills .nav-link.active {
-            background-color: #0d6efd;
-            color: #fff;
-            border-color: #0d6efd;
-            box-shadow: 0 4px 6px -1px rgba(13, 110, 253, 0.2);
-        }
-
-        .nav-pills .nav-link:hover:not(.active) {
+        .table-hover tbody tr:hover {
             background-color: #f1f5f9;
         }
-
+        
         #historyTable thead th {
             position: sticky;
             top: 0;
             z-index: 10;
+            background: var(--maint-surface);
+            box-shadow: 0 1px 0 var(--maint-border);
+            border-bottom: none;
         }
     </style>
 </head>
 
-<body>
+<body class="bg-light">
 
     <?php include("navbar.php"); ?>
 
     <div class="container py-4">
 
-        <!-- HEADER -->
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <div>
-                <h2 class="fw-bold text-dark mb-1"><i class="fas fa-tools text-primary me-2"></i> Makine Bakım Takip
-                </h2>
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb mb-0">
-                        <li class="breadcrumb-item"><a href="panel.php" class="text-decoration-none">Panel</a></li>
-                        <li class="breadcrumb-item active">Bakım & Arıza</li>
-                    </ol>
-                </nav>
+        <!-- HERO HEADER -->
+        <div class="page-hero">
+            <div class="hero-content">
+                <h2 class="hero-title"><i class="fas fa-tools me-3 text-info"></i>Makine Bakım Takip</h2>
+                <p class="hero-subtitle">
+                    Bakım ve Arıza Yönetim Sistemi
+                </p>
             </div>
-            <div class="d-flex gap-2">
-                <button class="btn btn-success px-4" data-bs-toggle="modal" data-bs-target="#bakimModal">
-                    <i class="fas fa-wrench me-2"></i>Bakım Gir
-                </button>
-                <button class="btn btn-primary px-4" data-bs-toggle="modal" data-bs-target="#yeniMakineModal">
-                    <i class="fas fa-plus me-2"></i>Makine Ekle
-                </button>
+            
+            <div class="hero-stats-wrapper flex-wrap">
+                <div class="hero-stats-grid">
+                    <div class="hero-stat-card danger-stat">
+                        <div class="label">Geciken</div>
+                        <div class="value"><?php echo $stats['gecikmis']; ?></div>
+                    </div>
+                    <div class="hero-stat-card warning-stat">
+                        <div class="label">7 Gün İçinde</div>
+                        <div class="value"><?php echo $stats['yaklasan']; ?></div>
+                    </div>
+                    <div class="hero-stat-card">
+                        <div class="label">Toplam Makine</div>
+                        <div class="value"><?php echo $stats['toplam']; ?></div>
+                    </div>
+                </div>
+                
+                <div class="hero-actions ms-md-3">
+                    <button class="btn btn-light btn-surface px-4 py-2 text-primary" data-bs-toggle="modal" data-bs-target="#yeniMakineModal">
+                        <i class="fas fa-plus me-2"></i>Makine Ekle
+                    </button>
+                    <button class="btn btn-success btn-surface px-4 py-2" data-bs-toggle="modal" data-bs-target="#bakimModal">
+                        <i class="fas fa-wrench me-2"></i>Bakım Gir
+                    </button>
+                </div>
             </div>
         </div>
 
-        <!-- TABS NAVIGATION -->
-        <ul class="nav nav-pills mb-4" id="pills-tab" role="tablist">
+        <div class="mb-4 text-center text-md-start">
+            <ul class="nav nav-pills" id="pills-tab" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link<?php echo $aktif_tab === 'makine' ? ' active' : ''; ?>" id="pills-makine-tab" data-bs-toggle="pill" data-bs-target="#pills-makine" type="button" role="tab"><i class="fas fa-th-large me-2"></i>Makine Durumları</button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link<?php echo $aktif_tab === 'gecmis' ? ' active' : ''; ?>" id="pills-gecmis-tab" data-bs-toggle="pill" data-bs-target="#pills-gecmis" type="button" role="tab"><i class="fas fa-history me-2"></i>Son Bakım İşlemleri & Lab</button>
             </li>
+                        <li class="nav-item" role="presentation">
+                <button class="nav-link<?php echo $aktif_tab === 'malzeme' ? ' active' : ''; ?>" id="pills-malzeme-tab" data-bs-toggle="pill" data-bs-target="#pills-malzeme" type="button" role="tab"><i class="fas fa-boxes me-2"></i>Malzeme Stok</button>
+            </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link<?php echo $aktif_tab === 'dosyalar' ? ' active' : ''; ?>" id="pills-dosyalar-tab" data-bs-toggle="pill" data-bs-target="#pills-dosyalar" type="button" role="tab"><i class="fas fa-file-pdf me-2"></i>Dosyalarım</button>
             </li>
         </ul>
+        </div>
 
         <div class="tab-content" id="pills-tabContent">
             <!-- TAB 1: MAKİNE DURUMLARI -->
             <div class="tab-pane fade<?php echo $aktif_tab === 'makine' ? ' show active' : ''; ?>" id="pills-makine" role="tabpanel">
-                <!-- STATS -->
-                <div class="row g-4 mb-4">
-                    <div class="col-md-4">
-                        <div class="card card-stats shadow-sm border-danger">
-                            <div class="card-body d-flex align-items-center">
-                                <div class="icon bg-light-danger text-danger me-3"><i class="fas fa-exclamation-triangle"></i>
-                                </div>
-                                <div>
-                                    <h6 class="text-muted mb-0">Geciken Bakımlar</h6>
-                                    <h3 class="fw-bold mb-0 text-danger"><?php echo $stats['gecikmis']; ?></h3>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card card-stats shadow-sm border-warning">
-                            <div class="card-body d-flex align-items-center">
-                                <div class="icon bg-light-warning text-warning me-3"><i class="fas fa-clock"></i></div>
-                                <div>
-                                    <h6 class="text-muted mb-0">7 Gün İçinde Olacak</h6>
-                                    <h3 class="fw-bold mb-0 text-warning"><?php echo $stats['yaklasan']; ?></h3>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card card-stats shadow-sm border-primary">
-                            <div class="card-body d-flex align-items-center">
-                                <div class="icon bg-light-primary text-primary me-3"><i class="fas fa-industry"></i></div>
-                                <div>
-                                    <h6 class="text-muted mb-0">Toplam Aktif Makine</h6>
-                                    <h3 class="fw-bold mb-0 text-primary"><?php echo $stats['toplam']; ?></h3>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card border-0 shadow-sm mb-4">
-                    <div class="card-header bg-white border-bottom py-3 d-flex flex-column gap-3">
+                <div class="surface-card mb-4">
+                    <div class="surface-header d-flex flex-column gap-3">
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <h5 class="mb-0 fw-bold">Makine Durumları</h5>
                             <div class="search-box">
@@ -940,8 +1078,8 @@ if ($pdf_yukleme_aktif) {
                 <div class="row">
                     <!-- SON BAKIM KAYITLARI -->
                     <div class="col-lg-7">
-                        <div class="card border-0 shadow-sm mb-4">
-                            <div class="card-header bg-white border-bottom py-3">
+                        <div class="surface-card mb-4">
+                            <div class="surface-header py-3">
                                 <h5 class="mb-0 fw-bold">Son Bakım İşlemleri</h5>
                             </div>
                             <div class="card-body p-0">
@@ -981,8 +1119,8 @@ if ($pdf_yukleme_aktif) {
 
                     <!-- LABORATUVAR MALZEMELERİ -->
                     <div class="col-lg-5">
-                        <div class="card border-0 shadow-sm">
-                            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                        <div class="surface-card">
+                            <div class="surface-header py-3 d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0 fw-bold"><i class="fas fa-flask text-info me-2"></i>Lab Malzeme Stokları</h5>
                                 <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#labMalzemeModal">
                                     <i class="fas fa-plus me-1"></i>Ekle
@@ -1034,12 +1172,67 @@ if ($pdf_yukleme_aktif) {
                 </div>
             </div>
 
-            <!-- TAB 3: DOSYALARIM -->
+            <!-- TAB 3: MALZEME STOK -->
+            <div class="tab-pane fade<?php echo $aktif_tab === 'malzeme' ? ' show active' : ''; ?>" id="pills-malzeme" role="tabpanel">
+                <div class="surface-card">
+                    <div class="surface-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0 fw-bold"><i class="fas fa-boxes text-info me-2"></i>Malzeme Stok Takibi</h5>
+                        <button class="btn btn-primary btn-surface px-4" data-bs-toggle="modal" data-bs-target="#malzemeStokEkleModal">
+                            <i class="fas fa-plus me-2"></i>Yeni Malzeme
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="malzemeTable" style="font-size: 0.9rem;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-4">Malzeme İsmi</th>
+                                        <th>Kullanıldığı Alet/Makine</th>
+                                        <th>Geliş Tarihi</th>
+                                        <th>Kullanım Miktarı</th>
+                                        <th class="text-end pe-4">İşlemler</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if ($malzeme_stoklar && $malzeme_stoklar->num_rows > 0): ?>
+                                        <?php while ($m = $malzeme_stoklar->fetch_assoc()): ?>
+                                            <tr>
+                                                <td class="ps-4 fw-bold text-dark"><?php echo htmlspecialchars($m['ismi']); ?></td>
+                                                <td class="text-muted"><?php echo htmlspecialchars($m['alet']); ?></td>
+                                                <td><?php echo date('d.m.Y', strtotime($m['gelis_tarihi'])); ?></td>
+                                                <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($m['kullanim_miktari']); ?></span></td>
+                                                <td class="text-end pe-4">
+                                                    <div class="btn-group gap-1">
+                                                        <button class="btn btn-sm btn-outline-primary border p-1" title="Düzenle" 
+                                                            onclick='malzemeDuzenleModalAc(<?php echo htmlspecialchars(json_encode($m)); ?>)'>
+                                                            <i class="fas fa-edit"></i>
+                                                        </button>
+                                                        <button type="button" class="btn btn-sm btn-outline-danger border p-1" title="Sil"
+                                                            onclick="malzemeStokSil('?malzeme_sil=<?php echo $m['id']; ?>')">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endwhile; ?>
+                                    <?php else: ?>
+                                        <tr>
+                                            <td colspan="5" class="text-center py-5 text-muted">Henüz stok kaydı eklenmemiş.</td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: DOSYALARIM -->
             <div class="tab-pane fade<?php echo $aktif_tab === 'dosyalar' ? ' show active' : ''; ?>" id="pills-dosyalar" role="tabpanel">
                 <div class="row g-4">
                     <div class="col-lg-4">
-                        <div class="card border-0 shadow-sm">
-                            <div class="card-header bg-white border-bottom py-3">
+                        <div class="surface-card">
+                            <div class="surface-header py-3">
                                 <h5 class="mb-0 fw-bold"><i class="fas fa-upload text-primary me-2"></i>PDF Yukle</h5>
                             </div>
                             <div class="card-body">
@@ -1067,8 +1260,8 @@ if ($pdf_yukleme_aktif) {
                     </div>
 
                     <div class="col-lg-8">
-                        <div class="card border-0 shadow-sm">
-                            <div class="card-header bg-white border-bottom py-3">
+                        <div class="surface-card">
+                            <div class="surface-header py-3">
                                 <h5 class="mb-0 fw-bold"><i class="fas fa-folder-open text-danger me-2"></i>Yuklenen PDF'ler</h5>
                             </div>
                             <div class="card-body p-0">
@@ -1166,6 +1359,79 @@ if ($pdf_yukleme_aktif) {
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- YENİ MALZEME STOK EKLE MODAL -->
+    <div class="modal fade" id="malzemeStokEkleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 1rem;">
+                <div class="modal-header bg-light border-0">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-box text-primary me-2"></i>Yeni Malzeme Ekle</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="post" action="?tab=malzeme">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Malzeme İsmi</label>
+                            <input type="text" name="malzeme_ismi" class="form-control" placeholder="Örn: Rulman, Kayış..." required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Kullanıldığı Alet / Makine</label>
+                            <input type="text" name="malzeme_alet" class="form-control" placeholder="Örn: Piston, Öğütücü..." required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Geliş Tarihi</label>
+                            <input type="date" name="malzeme_gelis" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Kullanım Miktarı</label>
+                            <input type="text" name="malzeme_kullanim" class="form-control" placeholder="Örn: 5 Adet, 10 Litre" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-0 bg-light">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                        <button type="submit" name="malzeme_stok_ekle" class="btn btn-primary px-4 fw-bold"><i class="fas fa-save me-1"></i>Kaydet</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MALZEME STOK DÜZENLE MODAL -->
+    <div class="modal fade" id="malzemeStokDuzenleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 1rem;">
+                <div class="modal-header bg-light border-0">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-edit text-primary me-2"></i>Malzeme Güncelle</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="post" action="?tab=malzeme">
+                    <div class="modal-body">
+                        <input type="hidden" name="malzeme_id" id="edit_malzeme_id">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Malzeme İsmi</label>
+                            <input type="text" name="malzeme_ismi" id="edit_malzeme_ismi" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Kullanıldığı Alet / Makine</label>
+                            <input type="text" name="malzeme_alet" id="edit_malzeme_alet" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Geliş Tarihi</label>
+                            <input type="date" name="malzeme_gelis" id="edit_malzeme_gelis" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Kullanım Miktarı</label>
+                            <input type="text" name="malzeme_kullanim" id="edit_malzeme_kullanim" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-0 bg-light">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                        <button type="submit" name="malzeme_stok_guncelle" class="btn btn-primary px-4 fw-bold"><i class="fas fa-save me-1"></i>Güncelle</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -1722,6 +1988,33 @@ if ($pdf_yukleme_aktif) {
                 }
             });
         });
+
+
+        function malzemeDuzenleModalAc(data) {
+            document.getElementById('edit_malzeme_id').value = data.id;
+            document.getElementById('edit_malzeme_ismi').value = data.ismi;
+            document.getElementById('edit_malzeme_alet').value = data.alet;
+            document.getElementById('edit_malzeme_gelis').value = data.gelis_tarihi;
+            document.getElementById('edit_malzeme_kullanim').value = data.kullanim_miktari;
+            const modal = new bootstrap.Modal(document.getElementById('malzemeStokDuzenleModal'));
+            modal.show();
+        }
+
+        function malzemeStokSil(url) {
+            Swal.fire({
+                title: 'Emin misiniz?',
+                text: 'Bu malzeme kaydı kalıcı olarak silinecektir.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                confirmButtonText: 'Evet, Sil',
+                cancelButtonText: 'İptal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = url;
+                }
+            });
+        }
 
         function bakimModalAc(id, ad) {
             // Dropdown değerini güncelle ve select2'nin algılaması için trigger("change") tetikle.

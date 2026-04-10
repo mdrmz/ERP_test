@@ -303,7 +303,7 @@ if (isset($_POST["hammadde_kantar_onayla"])) {
                           $kantar_okuma_sql,
                           guncelleme_tarihi = NOW()
                       WHERE id = $akis_id");
-    
+
     // Hammadde girişleri tablosundaki miktar_kg da güncellensin
     $baglanti->query("UPDATE hammadde_girisleri hg
                       INNER JOIN hammadde_kabul_akisi hka ON hka.hammadde_giris_id = hg.id
@@ -738,7 +738,8 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                 <?php if ($hammadde_alim_bekleyenler->num_rows > 0): ?>
                                     <?php while ($row = $hammadde_alim_bekleyenler->fetch_assoc()): ?>
                                         <tr>
-                                            <td data-order="<?php echo (int) strtotime((string) ($row["giris_tarihi"] ?? '')); ?>">
+                                            <td
+                                                data-order="<?php echo (int) strtotime((string) ($row["giris_tarihi"] ?? '')); ?>">
                                                 <div class="small text-muted mb-1">
                                                     <?php echo date("d.m.Y H:i", strtotime($row["giris_tarihi"])); ?>
                                                 </div>
@@ -755,10 +756,12 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                             <td>
                                                 <div class="d-flex flex-column gap-1">
                                                     <span class="badge bg-light text-dark meta-info-badge">
-                                                        Birim Fiyat: <?php echo formatBirimFiyatGoster($row["birim_fiyat"] ?? null); ?>
+                                                        Birim Fiyat:
+                                                        <?php echo formatBirimFiyatGoster($row["birim_fiyat"] ?? null); ?>
                                                     </span>
                                                     <span class="badge bg-light text-dark meta-info-badge">
-                                                        Ödeme: <?php echo !empty($row["odeme_tarihi"]) ? date("d.m.Y", strtotime($row["odeme_tarihi"])) : '-'; ?>
+                                                        Ödeme:
+                                                        <?php echo !empty($row["odeme_tarihi"]) ? date("d.m.Y", strtotime($row["odeme_tarihi"])) : '-'; ?>
                                                     </span>
                                                 </div>
                                             </td>
@@ -935,7 +938,8 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
         <!-- HAMMADDE İŞLEM GEÇMİŞİ -->
         <div class="mt-4">
             <div class="card border-0 shadow-sm overflow-hidden">
-                <div class="card-header bg-white py-3 border-bottom-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div
+                    class="card-header bg-white py-3 border-bottom-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <div class="d-flex align-items-center">
                         <i class="fas fa-history me-2 text-secondary"></i>
                         <h5 class="mb-0 fw-bold">Son Hammadde Alım İşlemleri</h5>
@@ -984,10 +988,12 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                                             </div>
                                             <div class="small mt-1">
                                                 <span class="badge bg-light text-dark meta-info-badge">
-                                                    Birim Fiyat: <?php echo formatBirimFiyatGoster($row["birim_fiyat"] ?? null); ?>
+                                                    Birim Fiyat:
+                                                    <?php echo formatBirimFiyatGoster($row["birim_fiyat"] ?? null); ?>
                                                 </span>
                                                 <span class="badge bg-light text-dark meta-info-badge">
-                                                    Ödeme: <?php echo !empty($row["odeme_tarihi"]) ? date("d.m.Y", strtotime($row["odeme_tarihi"])) : '-'; ?>
+                                                    Ödeme:
+                                                    <?php echo !empty($row["odeme_tarihi"]) ? date("d.m.Y", strtotime($row["odeme_tarihi"])) : '-'; ?>
                                                 </span>
                                             </div>
                                         </td>
@@ -1088,17 +1094,19 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
         <div class="modal-dialog">
             <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-balance-scale me-2"></i> Satınalma Onayı & Kantar Tartımı</h5>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-balance-scale me-2"></i> Satınalma Onayı & Kantar
+                        Tartımı</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="alert alert-info py-2 small">
-                        <i class="fas fa-info-circle me-1"></i> Aracı onaylamak ve sisteme kabul etmek için kantar ağırlığını çekin veya girin.
+                        <i class="fas fa-info-circle me-1"></i> Aracı onaylamak ve sisteme kabul etmek için kantar
+                        ağırlığını çekin veya girin.
                     </div>
                     <form method="post">
                         <input type="hidden" name="akis_id" id="modal_kantar_akis_id">
                         <input type="hidden" name="kantar_okuma_id" id="modal_kantar_okuma_id" value="">
-                        
+
                         <div class="row mb-3">
                             <div class="col-6">
                                 <label class="text-muted small mb-1">Araç Plaka</label>
@@ -1118,16 +1126,19 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
                         <div class="card bg-light border-0 p-3 mb-4">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <label class="form-label fw-bold m-0 text-success">Net Ağırlık (KG)</label>
-                                <button type="button" id="btn_kantar_cek" class="btn btn-sm btn-warning fw-bold shadow-sm" title="Kantardan anlık veri çek">
+                                <button type="button" id="btn_kantar_cek"
+                                    class="btn btn-sm btn-warning fw-bold shadow-sm" title="Kantardan anlık veri çek">
                                     <i class="fas fa-wifi me-1"></i> Kantardan Çek
                                 </button>
                             </div>
-                            <input type="number" name="kantar_net_kg" id="modal_kantar_kg" class="form-control form-control-lg text-center fw-bold text-primary"
-                                placeholder="0" required min="1" style="font-size: 1.5rem;">
+                            <input type="number" name="kantar_net_kg" id="modal_kantar_kg"
+                                class="form-control form-control-lg text-center fw-bold text-primary" placeholder="0"
+                                required min="1" style="font-size: 1.5rem;">
                         </div>
 
                         <div class="d-grid gap-2">
-                            <button type="submit" name="hammadde_kantar_onayla" class="btn btn-success py-3 fw-bold rounded-3 fs-5 shadow-sm">
+                            <button type="submit" name="hammadde_kantar_onayla"
+                                class="btn btn-success py-3 fw-bold rounded-3 fs-5 shadow-sm">
                                 <i class="fas fa-check-circle me-2"></i> Onayla ve Kaydet
                             </button>
                         </div>
@@ -1156,7 +1167,7 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
             document.getElementById('modal_kantar_tedarikci').value = tedarikci;
             document.getElementById('modal_kantar_kg').value = ''; // Temizle
             document.getElementById('modal_kantar_okuma_id').value = '';
-            
+
             var modal = new bootstrap.Modal(document.getElementById('kantarOnayModal'));
             modal.show();
         }
@@ -1225,8 +1236,8 @@ $aktif_tab = isset($_GET['tab']) ? $_GET['tab'] : 'hammadde';
             $('#btn_kantar_cek').on('click', function () {
                 var btn = $(this);
                 var girilenPlaka = $('#modal_kantar_plaka').val().trim();
-                
-                if(!girilenPlaka) {
+
+                if (!girilenPlaka) {
                     Swal.fire({
                         icon: 'warning',
                         title: 'Plaka Bilgisi Eksik',

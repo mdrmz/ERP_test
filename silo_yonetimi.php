@@ -408,7 +408,7 @@ $karisim_sql = "SELECT
                 )
                 WHERE ssd.kalan_miktar_kg > 0
                 GROUP BY ssd.silo_id, ssd.parti_kodu, COALESCE(h.hammadde_kodu, NULLIF(TRIM(ssd.hammadde_turu), ''), 'Bilinmeyen')
-                ORDER BY ssd.silo_id, kalan_kg DESC";
+                ORDER BY ssd.silo_id, MIN(ssd.giris_tarihi) DESC";
 $karisim_result = $baglanti->query($karisim_sql);
 
 if ($karisim_result) {
@@ -418,17 +418,10 @@ if ($karisim_result) {
         $parti_kodu = trim((string) ($k['parti_kodu'] ?? ''));
         $kalan_kg = (float) ($k['kalan_kg'] ?? 0);
 
-        if ($silo_id <= 0 || $kalan_kg <= 0) {
-            continue;
-        }
+        if ($silo_id <= 0 || $kalan_kg <= 0) continue;
+        if ($hammadde_kodu === '') $hammadde_kodu = 'Bilinmeyen';
 
-        if ($hammadde_kodu === '') {
-            $hammadde_kodu = 'Bilinmeyen';
-        }
-
-        if (!isset($silo_karisim_map[$silo_id])) {
-            $silo_karisim_map[$silo_id] = [];
-        }
+        if (!isset($silo_karisim_map[$silo_id])) $silo_karisim_map[$silo_id] = [];
 
         $silo_karisim_map[$silo_id][] = [
             'hammadde_kodu' => $hammadde_kodu,
@@ -491,7 +484,7 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
             gap: 0.5rem;
             align-items: center;
             padding: 0.35rem 0;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            border-bottom: 1px solid rgba(15, 23, 42, 0.12);
             min-width: 0;
         }
 
@@ -503,8 +496,8 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
             display: inline-flex;
             align-items: center;
             gap: 0.35rem;
-            color: #5a6168;
-            font-weight: 600;
+            color: #334155;
+            font-weight: 700;
             white-space: nowrap;
         }
 
@@ -513,17 +506,24 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
             white-space: normal;
             overflow-wrap: anywhere;
             font-weight: 700;
-            color: #1f2937;
+            color: #0f172a;
             min-width: 0;
             line-height: 1.25;
         }
 
-        .silo-metric-row.is-primary .silo-metric-value {
+        .silo-metric-row.is-capacity .silo-metric-label,
+        .silo-metric-row.is-capacity .silo-metric-value {
             color: #0d6efd;
         }
 
+        .silo-metric-row.is-fill .silo-metric-label,
+        .silo-metric-row.is-fill .silo-metric-value {
+            color: #1f2937;
+        }
+
+        .silo-metric-row.is-muted .silo-metric-label,
         .silo-metric-row.is-muted .silo-metric-value {
-            color: #6c757d;
+            color: #198754;
             font-weight: 600;
         }
 
@@ -756,16 +756,16 @@ $silo_ozet = $silo_ozet_res ? $silo_ozet_res->fetch_assoc() : [
                                     </div>
                                     <div class='col-8'>
                                         <div class='silo-metrics small'>
-                                            <div class='silo-metric-row'>
-                                                <span class='silo-metric-label'><i class='fas fa-cube text-muted'></i> Doluluk:</span>
-                                                <span class='silo-metric-value'>" . sayiFormat($dol_m3, 1) . " m&sup3; / " . sayiFormat($toplam_kalan_ton, 2) . " ton</span>
-                                            </div>
-                                            <div class='silo-metric-row is-primary'>
+                                            <div class='silo-metric-row is-capacity'>
                                                 <span class='silo-metric-label'><i class='fas fa-database'></i> Kapasite:</span>
                                                 <span class='silo-metric-value'>" . sayiFormat($cap_m3, 1) . " m&sup3; / " . sayiFormat($kapasite_tahmini_ton, 2) . " ton (tah.)</span>
                                             </div>
+                                            <div class='silo-metric-row is-fill'>
+                                                <span class='silo-metric-label'><i class='fas fa-cube'></i> Doluluk:</span>
+                                                <span class='silo-metric-value'>" . sayiFormat($dol_m3, 1) . " m&sup3; / " . sayiFormat($toplam_kalan_ton, 2) . " ton</span>
+                                            </div>
                                             <div class='silo-metric-row is-muted'>
-                                                <span class='silo-metric-label'>Bos Alan:</span>
+                                                <span class='silo-metric-label'><i class='fas fa-box-open'></i> Bos Alan:</span>
                                                 <span class='silo-metric-value'>" . sayiFormat($bos_m3, 1) . " m&sup3; / " . sayiFormat($bos_alan_tahmini_ton, 2) . " ton (tah.)</span>
                                             </div>
                                         </div>
